@@ -106,10 +106,11 @@ async function main() {
   // 获取提示词
   console.log('\n---------------------------------------------');
   console.log('📝 2. 请设置 Slide 生成要求');
-  const focusPrompt = await askQuestion('> 请输入生成 Slide 用的提示词 (Focus): ');
+  let focusPrompt = await askQuestion('> 请输入生成 Slide 用的提示词 (留空默认: "用中文生成详细的slide"): ');
   
   if (!focusPrompt.trim()) {
-    console.log('ℹ️ 提示词为空，将使用默认方式生成 Slide。');
+    focusPrompt = "用中文生成详细的slide";
+    console.log(`ℹ️ 使用默认提示词: "${focusPrompt}"`);
   }
 
   console.log('\n=============================================');
