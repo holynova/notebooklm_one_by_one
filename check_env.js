@@ -8,6 +8,13 @@ const rl = readline.createInterface({
 
 const askQuestion = (query) => new Promise(resolve => rl.question(query, resolve));
 
+// 处理 Ctrl+C 强制退出
+rl.on('SIGINT', () => {
+  console.log('\n🛑 收到中断信号，程序已退出。');
+  rl.close();
+  process.exit(0);
+});
+
 // 运行命令，返回 stdout 或 null
 function runCommand(command, options = {}) {
   try {

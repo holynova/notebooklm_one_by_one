@@ -10,6 +10,13 @@ const rl = readline.createInterface({
 // Promisify 简单的交互问答
 const askQuestion = (query) => new Promise(resolve => rl.question(query, resolve));
 
+// 处理 Ctrl+C 强制退出
+rl.on('SIGINT', () => {
+  console.log('\n🛑 收到中断信号，程序已退出。');
+  rl.close();
+  process.exit(0);
+});
+
 // 暂停工具(毫秒)
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
