@@ -21,21 +21,28 @@ rl.on('SIGINT', () => {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // 1. 获取并处理用户输入的所有 URL
-async function getUrls() {
-  console.log('\n🔗 1. 请输入一个或多个 URL，作为生成 Slide 的资源。');
-  console.log('💡 你可以在一行内用逗号、空格分隔，也可以直接换行粘贴多个 URL。');
-  console.log('👉 输入 END 并回车结束输入：\n');
-  
-  let urls = [];
-  while (true) {
-    const line = await askQuestion('> ');
-    if (line.trim().toUpperCase() === 'END') break;
+function getUrls() {
+  return new Promise((resolve) => {
+    console.log('\n🔗 1. 请输入一个或多个 URL，作为生成 Slide 的资源。');
+    console.log('💡 你可以在一行内用逗号、空格分隔，也可以直接换行粘贴多个 URL。');
+    console.log('👉 粘贴完成后，另起一行输入 END 并回车结束输入：\n');
+    process.stdout.write('> '); // 只打印一次引导符
     
-    // 使用逗号或者空白字符切分 URL
-    const parts = line.split(/[,\s]+/).map(s => s.trim()).filter(s => s.length > 0);
-    urls.push(...parts);
-  }
-  return urls;
+    let urls = [];
+    
+    const onLine = (line) => {
+      if (line.trim().toUpperCase() === 'END') {
+        rl.removeListener('line', onLine);
+        resolve(urls);
+        return;
+      }
+      
+      const parts = line.split(/[,\s]+/).map(s => s.trim()).filter(s => s.length > 0);
+      urls.push(...parts);
+    };
+    
+    rl.on('line', onLine);
+  });
 }
 
 // 辅助方法：提取 Notebook ID (一般为含有连字符的长字符串, 例如 12ab34cd-56ef-78gh-90ij-klmnopqrstuv)
