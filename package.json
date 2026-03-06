@@ -1,0 +1,24 @@
+{
+  "name": "notebooklm_one_by_one",
+  "version": "1.0.0",
+  "description": "这是一个基于 Node.js 编写的懒人批量生成工具。只需提供一批 URL，即可让 NotebookLM 帮您自动创建新的 Notebook、导入来源、并批量生出漂亮的幻灯片 (Slide Deck)！",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/holynova/notebooklm_one_by_one.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/holynova/notebooklm_one_by_one/issues"
+  },
+  "homepage": "https://github.com/holynova/notebooklm_one_by_one#readme",
+  "dependencies": {
+    "pdf2pic": "^3.2.0",
+    "sharp": "^0.34.5"
+  }
+}
