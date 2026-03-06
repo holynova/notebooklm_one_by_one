@@ -146,3 +146,7 @@ vite.config.ts.timestamp-*
 
 slides_downloads/
 .DS_Store
+.browser_data/
+xhs_cookies.json
+*.tgz
+content/

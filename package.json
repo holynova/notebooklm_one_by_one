@@ -4,7 +4,11 @@
   "description": "这是一个基于 Node.js 编写的懒人批量生成工具。只需提供一批 URL，即可让 NotebookLM 帮您自动创建新的 Notebook、导入来源、并批量生出漂亮的幻灯片 (Slide Deck)！",
   "main": "main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node main.js",
+    "slide": "node auto_slide.js",
+    "download": "node auto_download.js",
+    "img": "node pdf_to_img.js",
+    "xhs": "node xhs_publisher.js"
   },
   "repository": {
     "type": "git",
@@ -18,7 +22,11 @@
   },
   "homepage": "https://github.com/holynova/notebooklm_one_by_one#readme",
   "dependencies": {
+    "dotenv": "^17.3.1",
     "pdf2pic": "^3.2.0",
+    "playwright": "^1.58.2",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "sharp": "^0.34.5"
   }
 }

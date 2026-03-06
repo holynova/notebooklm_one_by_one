@@ -13,7 +13,7 @@
 
 ### 运行批量生成主入口
 ```bash
-node main.js
+pnpm start
 ```
 
 **执行效果**
@@ -28,7 +28,7 @@ node main.js
 
 ### 运行批量下载入口
 ```bash
-node auto_download.js
+pnpm download
 ```
 
 **执行效果**
@@ -36,10 +36,48 @@ node auto_download.js
 2. **灵活把控**：在扫描 Notebook 的漫长过程中随时按下 `Ctrl+C`，不仅不会崩溃，还能直接带着扫出的结果进入下一步。
 3. **范围下载**：列出按时间排序带编号的列表后，输入如 `1-10` 即可批量下载为 PDF 至 `slides_downloads` 本地文件夹。
 
-## ⚙️ 依赖项
-- [Node.js](https://nodejs.org/) (确保已安装即可)
-- [uv](https://docs.astral.sh/uv/) (Python 包管理工具，如果没有，需按照官方手动安装一次 uv。如果不使用此脚本的自动安装，也可以自己手动 `uv tool install notebooklm-mcp-cli`)
-- [notebooklm-mcp-cli](https://github.com/jacob-bd/notebooklm-mcp-cli) (本工具自动为您集成管理)
+## ⚙️ 依赖项 & 命令大全
+除了依赖 Python `uv` 之外，本项目现已全面使用 `pnpm` 进行依赖管理。
+在安装好后先运行 `pnpm install` 安装所有 Node 依赖。
+
+可用的快捷命令及对应例子包括：
+
+#### 1. 一键生成助手 (`start` / `slide`)
+检查环境并自动提问需要喂入的 URL 列表。
+```bash
+# 自动检测是否登录，并开始问答式生成
+pnpm start
+
+# 如果你确定环境没问题，可以直接跳过检查执行核心版
+pnpm slide
+```
+
+#### 2. 批量扫描与下载 PDF (`download`)
+向官方查询你名下的所有带幻灯片的项目，并在终端中列出让你选择，一键下载到本机的 `slides_downloads` 下。
+```bash
+# 执行后输入扫描限制 (例如搜寻最新的 10 个项目)，再选择需要下载的编号 (例如 1-5,7)
+pnpm download
+```
+
+#### 3. 自动排版拼图 (`img`)
+将下好的 PDF 页面根据你的排版要求（比如一图三页无缝拼接）裁成一张张适用于小红书的长图。
+```bash
+# 唤起交互式问答拼图
+pnpm img
+
+# [进阶] 使用命令行参数直接跳过问答，直接把编号为 1,2 的文件垂直拼接，每张大图放 4 页幻灯片，间距 10 像素
+pnpm img --file 1,2 --layout 1 --grid 4 --gap 10
+```
+
+#### 4. 小红书全自动发布 (`xhs`)
+打开一个自动化内嵌隐身浏览器，自动填写标题、上传图片并完成验证码和点击发布。
+```bash
+# 默认模式：自动寻找 content/ 目录下最新日期的文件夹任务进行发布
+pnpm xhs
+
+# [进阶] 命令行参数模式：自由指定需要发布的图片所在文件夹与标题、正文
+pnpm xhs --dir "slides_downloads/视频变漫画：文明_images" --title "视频变漫画：文明" --desc "视频变漫画：文明"
+```
 
 ## ⚠️ 常见问答
 - **遇到报错并跳出？**
