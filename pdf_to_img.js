@@ -45,8 +45,15 @@ async function main() {
     process.exit(1);
   }
 
-  // 获取所有的 pdf 文件
-  const files = fs.readdirSync(downloadsDir).filter(f => f.toLowerCase().endsWith('.pdf'));
+  // 获取所有的 pdf 文件，并按修改时间从新到旧排序
+  const files = fs.readdirSync(downloadsDir)
+    .filter(f => f.toLowerCase().endsWith('.pdf'))
+    .map(name => ({
+      name,
+      time: fs.statSync(path.join(downloadsDir, name)).mtime.getTime()
+    }))
+    .sort((a, b) => b.time - a.time)
+    .map(f => f.name);
   
   if (files.length === 0) {
     console.log('ℹ️ 在 slides_downloads 下未找到任何 PDF 文件。程序退出。');
@@ -58,10 +65,33 @@ async function main() {
     console.log(`  [${index + 1}] ${file}`);
   });
 
+  function parseIndices(inputStr) {
+    const indices = new Set();
+    const parts = inputStr.split(/[,\s]+/);
+    for (const part of parts) {
+      if (!part) continue;
+      if (part.includes('-')) {
+        const [startStr, endStr] = part.split('-');
+        const start = parseInt(startStr, 10);
+        const end = parseInt(endStr, 10);
+        if (!isNaN(start) && !isNaN(end) && start <= end) {
+          for (let i = start; i <= end; i++) {
+            if (i >= 1 && i <= files.length) indices.add(i - 1);
+          }
+        }
+      } else {
+        const num = parseInt(part, 10);
+        if (!isNaN(num) && num >= 1 && num <= files.length) {
+          indices.add(num - 1);
+        }
+      }
+    }
+    return Array.from(indices).sort((a, b) => a - b);
+  }
+
   let selectedIndices = [];
   if (argv.file) {
-    const parts = argv.file.split(',').map(s => parseInt(s.trim(), 10));
-    selectedIndices = parts.filter(num => !isNaN(num) && num >= 1 && num <= files.length).map(n => n - 1);
+    selectedIndices = parseIndices(String(argv.file));
     if (selectedIndices.length > 0) {
       console.log(`> [CLI 参数] 自动选择文件编号: ${selectedIndices.map(n => n + 1).join(', ')}`);
     } else {
@@ -71,9 +101,8 @@ async function main() {
 
   if (selectedIndices.length === 0) {
     while (true) {
-      const ans = await askQuestion('\n> 请输入文件编号 (单选例如 1，多选例如 1,3,5): ');
-      const parts = ans.split(/[,\s]+/).map(s => parseInt(s.trim(), 10));
-      selectedIndices = parts.filter(num => !isNaN(num) && num >= 1 && num <= files.length).map(n => n - 1);
+      const ans = await askQuestion('\n> 请输入文件编号 (单选 1，多选 1,3,5，连续多选 1-15): ');
+      selectedIndices = parseIndices(ans);
       
       if (selectedIndices.length > 0) {
         break;
