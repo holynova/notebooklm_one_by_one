@@ -138,7 +138,7 @@ async function main() {
     }
   }
 
-  let itemsPerGrid = 3;
+  let itemsPerGrid = 2;
   if (argv.grid) {
     const num = parseInt(argv.grid, 10);
     if (!isNaN(num) && num > 0) {
@@ -147,7 +147,7 @@ async function main() {
     }
   } else {
     while (true) {
-      const ans = await askQuestion('> 您希望几张幻灯片拼成一张大图？ (直接回车默认 3 张): ');
+      const ans = await askQuestion('> 您希望几张幻灯片拼成一张大图？ (直接回车默认 2 张): ');
       if (ans.trim() === '') {
         break;
       }

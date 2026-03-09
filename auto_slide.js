@@ -116,7 +116,7 @@ async function main() {
   let focusPrompt = await askQuestion('> 请输入生成 Slide 用的提示词 (留空默认: "用中文生成详细的slide"): ');
   
   if (!focusPrompt.trim()) {
-    focusPrompt = "用中文生成详细的slide";
+    focusPrompt = "用中文, 生成详细的slide";
     console.log(`ℹ️ 使用默认提示词: "${focusPrompt}"`);
   }
 
