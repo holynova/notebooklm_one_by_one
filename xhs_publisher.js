@@ -15,6 +15,11 @@ function askQuestion(query) {
   return new Promise(resolve => rl.question(query, ans => { rl.close(); resolve(ans); }));
 }
 
+async function randomWait(page, min, max) {
+  const delay = Math.floor(Math.random() * (max - min + 1)) + min;
+  await page.waitForTimeout(delay);
+}
+
 function parseIndices(inputStr, maxLen) {
   const indices = new Set();
   const parts = inputStr.split(/[,\s]+/);
@@ -116,7 +121,7 @@ async function publishTask(workDir, title, descText) {
       console.log("\n⚠️  请在浏览器中手动登录小红书...");
       console.log("   登录完成后，脚本会自动继续");
 
-      await page.waitForTimeout(2000);
+      await randomWait(page, 1500, 3000);
       try {
         await page.waitForURL("**/publish/**", { timeout: 300000 });
         console.log("✅ 登录成功！");
@@ -126,7 +131,7 @@ async function publishTask(workDir, title, descText) {
       }
     }
 
-    await page.waitForTimeout(2000);
+    await randomWait(page, 1500, 3000);
 
     console.log("\n📤 正在上传图片...");
 
@@ -134,7 +139,7 @@ async function publishTask(workDir, title, descText) {
       const imageTab = page.locator('text=发布图文, text=图文, [class*="image"]').first();
       if ((await imageTab.count()) > 0) {
         await imageTab.click({ force: true });
-        await page.waitForTimeout(1000);
+        await randomWait(page, 800, 1500);
       }
     } catch (e) {
       // Ignored
@@ -169,7 +174,7 @@ async function publishTask(workDir, title, descText) {
         try {
           console.log(`   上传图片 ${i + 1}/${imagePaths.length}...`);
           await imageInput.setInputFiles(imagePaths[i]);
-          await page.waitForTimeout(2000);
+          await randomWait(page, 1500, 3000);
         } catch (e) {
           console.log(`   图片 ${i + 1} 上传失败: ${e.message}`);
         }
@@ -177,7 +182,7 @@ async function publishTask(workDir, title, descText) {
     }
 
     console.log("   等待图片处理...");
-    await page.waitForTimeout(5000);
+    await randomWait(page, 4000, 6000);
 
     console.log("📝 正在填写标题...");
     const titleSelectors = [
@@ -247,7 +252,7 @@ async function publishTask(workDir, title, descText) {
           await submitBtn.click({ force: true, timeout: 2000 });
         }
 
-        await page.waitForTimeout(2000);
+        await randomWait(page, 1500, 3000);
 
         const slider = page.locator('.nc_scale, .slider-container, #nc_1_n1z').first();
         if ((await slider.count()) > 0 && await slider.isVisible()) {
@@ -260,7 +265,7 @@ async function publishTask(workDir, title, descText) {
               await page.mouse.down();
               await page.mouse.move(box.x + 500, box.y + box.height / 2, { steps: 20 });
               await page.mouse.up();
-              await page.waitForTimeout(2000);
+              await randomWait(page, 1500, 3000);
             }
           }
         }
@@ -277,7 +282,7 @@ async function publishTask(workDir, title, descText) {
         }
 
         console.log("   似乎未跳转，准备重试...");
-        await page.waitForTimeout(2000);
+        await randomWait(page, 1500, 3000);
       }
     } else {
       console.log("❌ 未找到发布按钮，请手动点击");
@@ -303,7 +308,7 @@ async function publishTask(workDir, title, descText) {
           break;
         }
 
-        await page.waitForTimeout(500);
+        await randomWait(page, 400, 600);
       }
 
       if (success) {
@@ -321,9 +326,9 @@ async function publishTask(workDir, title, descText) {
 
     if ((await page.locator('text=发布成功').count()) === 0) {
       console.log("\n等待几秒查看状态...");
-      await page.waitForTimeout(5000);
+      await randomWait(page, 4000, 6000);
     } else {
-      await page.waitForTimeout(3000);
+      await randomWait(page, 2000, 4000);
     }
 
     return true;
@@ -331,7 +336,7 @@ async function publishTask(workDir, title, descText) {
   } catch (err) {
     console.log(`\n❌ 发布失败: ${err.message}`);
     if (!isGithubActions) {
-      await page.waitForTimeout(5000);
+      await randomWait(page, 4000, 6000);
     }
     return false;
   } finally {
@@ -450,8 +455,9 @@ async function runBatch() {
     if (isSuccess) successCount++;
     
     if (i < selectedIndices.length - 1) {
-      console.log("\n⏳ 等待 3 秒后执行下一个任务...");
-      await new Promise(r => setTimeout(r, 3000));
+      const delayMs = Math.floor(Math.random() * (8000 - 3000 + 1)) + 3000;
+      console.log(`\n⏳ 等待 ${(delayMs / 1000).toFixed(1)} 秒后执行下一个任务...`);
+      await new Promise(r => setTimeout(r, delayMs));
     }
   }
 

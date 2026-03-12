@@ -150,3 +150,6 @@ slides_downloads/
 xhs_cookies.json
 *.tgz
 content/
+*.txt
+history.json
+output/

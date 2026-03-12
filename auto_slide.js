@@ -1,5 +1,6 @@
 const readline = require('readline');
 const { execSync } = require('child_process');
+const history = require('./history');
 
 // 初始化 readline 接口用于接收交互式输入
 const rl = readline.createInterface({
@@ -107,8 +108,43 @@ async function main() {
   }
   
   // 简单去重
-  const urls = [...new Set(rawUrls)];
-  console.log(`\n✅ 共收集到 ${urls.length} 个独立 URL 任务。`);
+  const allUrls = [...new Set(rawUrls)];
+  console.log(`\n✅ 共收集到 ${allUrls.length} 个独立 URL 任务。`);
+
+  // 检查历史记录，过滤已完成的 URL
+  const urls = [];
+  const skippedUrls = [];
+  const resumeUrls = []; // 仅需补生成 slide 的 URL
+
+  for (const url of allUrls) {
+    const record = history.getRecord(url);
+    if (record && record.notebookCreated && record.slideCreated) {
+      skippedUrls.push(url);
+    } else if (record && record.notebookCreated && !record.slideCreated) {
+      resumeUrls.push({ url, notebookId: record.notebookId });
+    } else {
+      urls.push(url);
+    }
+  }
+
+  if (skippedUrls.length > 0) {
+    console.log(`\n⏭️ 以下 ${skippedUrls.length} 个 URL 已在历史记录中完成，将自动跳过:`);
+    skippedUrls.forEach((u, i) => console.log(`   ${i + 1}. ${u}`));
+  }
+  if (resumeUrls.length > 0) {
+    console.log(`\n🔄 以下 ${resumeUrls.length} 个 URL 已有 Notebook，仅需生成 Slide:`);
+    resumeUrls.forEach((r, i) => console.log(`   ${i + 1}. ${r.url}`));
+  }
+
+  const totalTasks = urls.length + resumeUrls.length;
+  if (totalTasks === 0) {
+    console.log('\n✅ 所有 URL 均已处理完毕，无需重复操作！');
+    history.printSummary();
+    rl.close();
+    return;
+  }
+
+  console.log(`\n📊 本次需要处理的任务: ${totalTasks} 个 (新建 ${urls.length} + 恢复 ${resumeUrls.length})`);
 
   // 获取提示词
   console.log('\n---------------------------------------------');
@@ -124,35 +160,94 @@ async function main() {
   console.log('⚙️ 开始按顺序处理任务 (请勿关闭终端窗口)...');
   console.log('=============================================\n');
 
-  // 按照 url 迭代执行任务
+  const MAX_CONSECUTIVE_FAILURES = 10;
+  let consecutiveFailures = 0;
+  let failedTaskCount = 0;
+  let taskIndex = 0;
+
+  // Part A: 处理需要恢复的 URL (已有 Notebook，仅需生成 Slide)
+  for (let i = 0; i < resumeUrls.length; i++) {
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      console.error(`\n🛑 连续失败已达 ${MAX_CONSECUTIVE_FAILURES} 次，终止后续任务！`);
+      break;
+    }
+
+    taskIndex++;
+    const { url, notebookId } = resumeUrls[i];
+    console.log(`\n🔄 [任务 ${taskIndex}/${totalTasks}] 恢复处理 URL: ${url}`);
+    console.log(`   ℹ️ 复用已有 Notebook ID: ${notebookId}`);
+
+    // 仅执行 Slide 生成
+    console.log(`\n   [步骤 1/1] 开始使用提示词生成 Slide...`);
+    
+    let command = `nlm slides create ${notebookId} --confirm`;
+    if (focusPrompt.trim()) {
+      const escapedPrompt = focusPrompt.replace(/"/g, '\\"');
+      command = `nlm slides create ${notebookId} --focus "${escapedPrompt}" --confirm`;
+    }
+    
+    const slideRes = runCLI(command, true);
+    if (!slideRes.success) {
+      const fc = history.markFailed(url);
+      consecutiveFailures++;
+      failedTaskCount++;
+      console.error(`   ⚠️ 生成 Slide 失败 (该 URL 累计失败 ${fc} 次, 连续失败 ${consecutiveFailures} 次)，跳过此任务。`);
+      continue;
+    }
+    consecutiveFailures = 0;
+    history.markSlideCreated(url);
+    console.log(`   🎉 [任务 ${taskIndex}/${totalTasks}] 恢复任务完成！Slide 已生成。`);
+
+    if (taskIndex < totalTasks) {
+      const delayMs = getRandomDelay(3, 7);
+      console.log(`\n   😴 随机等待 ${(delayMs / 1000).toFixed(1)} 秒，准备执行下一个任务...`);
+      await sleep(delayMs);
+    }
+  }
+
+  // Part B: 处理全新的 URL
   for (let i = 0; i < urls.length; i++) {
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      console.error(`\n🛑 连续失败已达 ${MAX_CONSECUTIVE_FAILURES} 次，终止后续任务！`);
+      break;
+    }
+
+    taskIndex++;
     const url = urls[i];
-    console.log(`\n▶️ [任务 ${i + 1}/${urls.length}] 正在处理 URL: ${url}`);
+    console.log(`\n▶️ [任务 ${taskIndex}/${totalTasks}] 正在处理 URL: ${url}`);
     
     // 2.1 创建无标题 Notebook，让导入后的 source 自动重命名它
     console.log(`\n   [步骤 1/3] 正在创建无标题的新 Notebook...`);
     
     const createRes = runCLI(`nlm notebook create`);
     if (!createRes.success) {
-      console.error(`   🛑 遇到错误，创建 Notebook 失败，中止后续任务！`);
-      process.exit(1);
+      const fc = history.markFailed(url);
+      consecutiveFailures++;
+      failedTaskCount++;
+      console.error(`   ⚠️ 创建 Notebook 失败 (该 URL 累计失败 ${fc} 次, 连续失败 ${consecutiveFailures} 次)，跳过此任务。`);
+      continue;
     }
 
     const notebookId = extractNotebookId(createRes.output);
     if (!notebookId) {
-      console.error(`   ❌ 无法从命令输出中提取 Notebook ID。`);
-      console.error(`   🛑 遇到错误，中止后续任务！`);
-      process.exit(1);
+      const fc = history.markFailed(url);
+      consecutiveFailures++;
+      failedTaskCount++;
+      console.error(`   ⚠️ 无法提取 Notebook ID (该 URL 累计失败 ${fc} 次, 连续失败 ${consecutiveFailures} 次)，跳过此任务。`);
+      continue;
     }
     console.log(`   ✅ 成功创建 Notebook，ID提取为: ${notebookId}`);
+    history.markNotebookCreated(url, notebookId);
 
     // 2.2 导入 URL 作为 source
     console.log(`\n   [步骤 2/3] 正在将 URL 导入为 source，等待后台解析处理完毕...`);
-    // stdio: 'inherit' 让用户能直接看到CLI可能带的进度条
     const addRes = runCLI(`nlm source add ${notebookId} --url "${url}" --wait`, true);
     if (!addRes.success) {
-      console.error(`   🛑 导入 URL 失败或超时，中止后续任务！`);
-      process.exit(1);
+      const fc = history.markFailed(url);
+      consecutiveFailures++;
+      failedTaskCount++;
+      console.error(`   ⚠️ 导入 URL 失败 (该 URL 累计失败 ${fc} 次, 连续失败 ${consecutiveFailures} 次)，跳过此任务。`);
+      continue;
     }
     console.log(`   ✅ URL 导入完成！`);
 
@@ -167,23 +262,33 @@ async function main() {
     
     const slideRes = runCLI(command, true);
     if (!slideRes.success) {
-      console.error(`   🛑 生成 Slide 请求执行失败，中止后续任务！`);
-      process.exit(1);
+      const fc = history.markFailed(url);
+      consecutiveFailures++;
+      failedTaskCount++;
+      console.error(`   ⚠️ 生成 Slide 失败 (该 URL 累计失败 ${fc} 次, 连续失败 ${consecutiveFailures} 次)，跳过此任务。`);
+      continue;
     }
-    console.log(`   🎉 [任务 ${i + 1}/${urls.length}] 阶段成功完成！Slide 生成已触发。`);
+    consecutiveFailures = 0;
+    history.markSlideCreated(url);
+    console.log(`   🎉 [任务 ${taskIndex}/${totalTasks}] 阶段成功完成！Slide 生成已触发。`);
 
     // 2.4 如果不是最后一个任务，随机等待几秒再继续
-    if (i < urls.length - 1) {
-      const delayMs = getRandomDelay(3, 7); // 默认 3-7 秒
+    if (taskIndex < totalTasks) {
+      const delayMs = getRandomDelay(3, 7);
       console.log(`\n   😴 随机等待 ${(delayMs / 1000).toFixed(1)} 秒，准备执行下一个任务...`);
       await sleep(delayMs);
     }
   }
 
-  // 2.5 全部执行成功后退出
+  // 2.5 全部执行完毕后的汇总
   console.log('\n=============================================');
-  console.log('🌟 所有任务执行流程完毕！去 NotebookLM 看看成果吧。');
+  if (failedTaskCount > 0) {
+    console.log(`⚠️ 所有任务已处理完毕，共有 ${failedTaskCount} 个任务失败。`);
+  } else {
+    console.log('🌟 所有任务执行流程完毕！去 NotebookLM 看看成果吧。');
+  }
   console.log('=============================================');
+  history.printSummary();
   rl.close();
 }
 

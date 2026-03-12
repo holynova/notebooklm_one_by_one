@@ -2,6 +2,7 @@ const { execSync } = require('child_process');
 const readline = require('readline');
 const fs = require('fs');
 const path = require('path');
+const history = require('./history');
 
 const rl = readline.createInterface({
   input: process.stdin,
@@ -202,6 +203,12 @@ async function main() {
       execSync(`nlm download slide-deck "${nb.id}" --format pdf --output "${outputPath}"`, { stdio: 'inherit' });
       console.log(`   ✅ 下载成功! => ${outputPath}`);
       successCount++;
+
+      // 更新历史记录中的下载次数
+      const record = history.findByNotebookId(nb.id);
+      if (record) {
+        history.incrementDownloadCount(record.url);
+      }
     } catch (e) {
       console.error(`   ❌ 下载失败。`);
     }
