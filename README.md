@@ -77,6 +77,9 @@ pnpm xhs
 
 # [进阶] 单个任务跑通模式：通过命令行参数直接跳过问答，指定需要发布的图片所在文件夹与标题、正文
 pnpm xhs --dir "slides_downloads/视频变漫画：文明_images" --title "视频变漫画：文明" --desc "视频变漫画：文明"
+
+# [进阶] 文件夹批量分P发布模式：将一个包含大量图片的文件夹按切分为多篇帖子（默认每篇 9 张图），序号自动递增连续发布
+pnpm xhs --bulk-dir "slides_downloads/我的超长壁纸集_images" --chunk 9 --title "精美壁纸分享" --desc "每天分享好看的壁纸，喜欢就点赞收藏吧！"
 ```
 
 ## ⚠️ 常见问答

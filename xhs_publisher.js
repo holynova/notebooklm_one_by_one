@@ -44,30 +44,38 @@ function parseIndices(inputStr, maxLen) {
   return Array.from(indices).sort((a, b) => a - b);
 }
 
-async function publishTask(workDir, title, descText) {
+async function publishTask(workDirOrImagePaths, title, descText) {
   console.log("==================================================");
   console.log(`🚀 开始发布任务: ${title}`);
   
-  // 收集工作区内的有效图片
-  const imagePaths = [];
-  const files = fs.readdirSync(workDir);
-  const imgFiles = files.filter(f => /\.(png|jpe?g)$/i.test(f)).sort((a, b) => {
-    const numA = parseInt(a.match(/^\d+/)?.[0]) || 0;
-    const numB = parseInt(b.match(/^\d+/)?.[0]) || 0;
-    return numA - numB || a.localeCompare(b);
-  });
+  let targetDir;
+  let imagePaths = [];
 
-  for (const f of imgFiles) {
-    if (imagePaths.length >= 18) break; 
-    imagePaths.push(path.resolve(workDir, f));
+  if (Array.isArray(workDirOrImagePaths)) {
+    imagePaths = [...workDirOrImagePaths];
+    targetDir = imagePaths.length > 0 ? path.dirname(imagePaths[0]) : process.cwd();
+  } else {
+    targetDir = workDirOrImagePaths;
+    // 收集工作区内的有效图片
+    const files = fs.readdirSync(targetDir);
+    const imgFiles = files.filter(f => /\.(png|jpe?g)$/i.test(f)).sort((a, b) => {
+      const numA = parseInt(a.match(/^\d+/)?.[0]) || 0;
+      const numB = parseInt(b.match(/^\d+/)?.[0]) || 0;
+      return numA - numB || a.localeCompare(b);
+    });
+
+    for (const f of imgFiles) {
+      if (imagePaths.length >= 18) break; 
+      imagePaths.push(path.resolve(targetDir, f));
+    }
   }
 
   if (imagePaths.length === 0) {
-    console.log(`❌ 在 ${workDir} 内未找到任何图片文件 (*.png, *.jpg)。跳过。`);
+    console.log(`❌ 未找到任何图片文件 (*.png, *.jpg)。跳过。`);
     return false;
   }
 
-  console.log(`📂 工作目录: ${workDir}`);
+  console.log(`📂 工作目录: ${targetDir}`);
   console.log(`📝 标题: ${title}`);
   console.log(`🖼️  图片: ${imagePaths.length} 张`);
   console.log("==================================================");
@@ -318,7 +326,7 @@ async function publishTask(workDir, title, descText) {
       }
     } catch (err) {
       console.log(`⚠️  未检测到明确的发布成功信号: ${err.message}`);
-      const screenshotPath = path.join(workDir, "publish_status_debug.png");
+      const screenshotPath = path.join(targetDir, "publish_status_debug.png");
       await page.screenshot({ path: screenshotPath });
       console.log(`   已保存页面截图到: ${screenshotPath}`);
       console.log("   请手动检查浏览器状态");
@@ -374,6 +382,54 @@ async function runBatch() {
         argv[key] = true;
       }
     }
+  }
+
+  if (argv['bulk-dir']) {
+    const bulkDir = path.resolve(process.cwd(), argv['bulk-dir']);
+    if (!fs.existsSync(bulkDir)) {
+      console.log(`❌ 指定的批量文件夹不存在: ${bulkDir}`);
+      return;
+    }
+    const chunk = parseInt(argv.chunk, 10) || 9; // 默认9张图片一篇帖子
+    const title = argv.title || "批量发布";
+    const desc = argv.desc || "这是自动批量发布的图文";
+
+    console.log(`\n📦 开启文件夹批量分P发布模式`);
+    console.log(`📁 目标文件夹: ${bulkDir}`);
+    console.log(`🖼️ 每篇帖子图片数: ${chunk}`);
+    console.log(`📝 统一标题: ${title} (带序号)`);
+
+    const files = fs.readdirSync(bulkDir);
+    const imgFiles = files.filter(f => /\.(png|jpe?g)$/i.test(f)).sort((a, b) => {
+      const numA = parseInt(a.match(/^\d+/)?.[0]) || 0;
+      const numB = parseInt(b.match(/^\d+/)?.[0]) || 0;
+      return numA - numB || a.localeCompare(b);
+    }).map(f => path.resolve(bulkDir, f));
+
+    if (imgFiles.length === 0) {
+      console.log(`❌ 文件夹中没有图片文件: ${bulkDir}`);
+      return;
+    }
+
+    const totalPosts = Math.ceil(imgFiles.length / chunk);
+    console.log(`📊 共计 ${imgFiles.length} 张图片，将分为 ${totalPosts} 篇帖子发布。`);
+
+    let successCount = 0;
+    for (let i = 0; i < totalPosts; i++) {
+      const chunkPaths = imgFiles.slice(i * chunk, (i + 1) * chunk);
+      const postTitle = `${title} (${i + 1})`;
+      console.log(`\n▶️ 开始执行 第 ${i + 1}/${totalPosts} 个任务...`);
+      const isSuccess = await publishTask(chunkPaths, postTitle, desc);
+      if (isSuccess) successCount++;
+
+      if (i < totalPosts - 1) {
+        const delayMs = Math.floor(Math.random() * (8000 - 3000 + 1)) + 3000;
+        console.log(`\n⏳ 等待 ${(delayMs / 1000).toFixed(1)} 秒后执行下一个任务...`);
+        await new Promise(r => setTimeout(r, delayMs));
+      }
+    }
+    console.log(`\n🎉 批量发布完毕! 总任务: ${totalPosts}, 成功: ${successCount}`);
+    return;
   }
 
   if (argv.dir) {
