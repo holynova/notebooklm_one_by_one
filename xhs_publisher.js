@@ -44,7 +44,7 @@ function parseIndices(inputStr, maxLen) {
   return Array.from(indices).sort((a, b) => a - b);
 }
 
-async function publishTask(workDirOrImagePaths, title, descText) {
+async function publishTask(workDirOrImagePaths, title, descText, options = {}) {
   console.log("==================================================");
   console.log(`🚀 开始发布任务: ${title}`);
   
@@ -209,8 +209,10 @@ async function publishTask(workDirOrImagePaths, title, descText) {
       const titleInput = page.locator(selector).first();
       try {
         if ((await titleInput.isVisible()) && (await titleInput.isEnabled())) {
+          await randomWait(page, 800, 1500);
           // 小红书标题严格限制最长 20 个字
           await titleInput.fill(title.substring(0, 20));
+          await randomWait(page, 500, 1000);
           titleFilled = true;
           break;
         }
@@ -239,14 +241,88 @@ async function publishTask(workDirOrImagePaths, title, descText) {
       const descInput = page.locator(selector).first();
       if ((await descInput.count()) > 0) {
         try {
+          await randomWait(page, 800, 1500);
           // 正文最长 1000 个字
           await descInput.fill(descText.substring(0, 1000));
+          await randomWait(page, 500, 1000);
           break;
         } catch (e) {}
       }
     }
 
     console.log("✅ 内容填写完成！");
+
+    if (options.schedule || options.scheduleTime) {
+      console.log("\n⏰ 正在设置定时发布...");
+      try {
+        let future;
+        if (options.scheduleTime) {
+          future = new Date(options.scheduleTime);
+        } else {
+          future = new Date(Date.now() + 2 * 60 * 60 * 1000);
+        }
+        const yyyy = future.getFullYear();
+        const mm = String(future.getMonth() + 1).padStart(2, '0');
+        const dd = String(future.getDate()).padStart(2, '0');
+        const hh = String(future.getHours()).padStart(2, '0');
+        const min = String(future.getMinutes()).padStart(2, '0');
+        const timeStr = `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+        
+        console.log(`   目标时间: ${timeStr}${options.scheduleTime ? '' : ' (两小时后)'}`);
+        
+        const scheduleContainer = page.locator('.custom-switch-card').filter({ hasText: /^定时发布$/ }).first();
+        if (await scheduleContainer.count() > 0) {
+            const switchBtn = scheduleContainer.locator('.d-switch').first();
+            const isChecked = await scheduleContainer.locator('input[type="checkbox"]').evaluate(n => n.checked).catch(() => false);
+            if (!isChecked) {
+                await switchBtn.click({ force: true }).catch(() => switchBtn.click());
+                await randomWait(page, 1000, 2000);
+            }
+            
+            // 查找时间输入框并尝试 focus
+            
+            const hasInput = await page.evaluate(() => {
+                 const inp = Array.from(document.querySelectorAll('input')).find(i => /^20\d\d-/.test(i.value) || (i.placeholder && (i.placeholder.includes('日期') || i.placeholder.includes('时间') || i.placeholder.includes('请选择'))));
+                 if (inp) {
+                     inp.focus();
+                     return true;
+                 }
+                 return false;
+            });
+            
+            if (hasInput) {
+                await randomWait(page, 500, 1000);
+                const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+                await page.keyboard.press(isMac ? 'Meta+A' : 'Control+A');
+                await randomWait(page, 200, 500);
+                // 模拟输入
+                await page.keyboard.insertText(timeStr);
+                await randomWait(page, 200, 500);
+                await page.keyboard.press('Enter');
+                
+                // 点击空白处收起日历框
+                await page.mouse.click(10, 10);
+                await randomWait(page, 1000, 2000);
+                console.log(`   时间设置成功: ${timeStr}`);
+            } else {
+                console.log("   ⚠️ 无法找到日期输入框，请检查页面是否有变化");
+                await page.screenshot({ path: path.join(targetDir, "debug_schedule.png") });
+                const dbg = await page.evaluate(() => document.body.innerHTML);
+                try { require('fs').writeFileSync(path.join(targetDir, "debug_schedule.html"), dbg); } catch(e){}
+            }
+        } else {
+            console.log("   ⚠️ 未找到定时发布选项卡");
+        }
+      } catch (e) {
+         console.log(`   ⚠️ 设置定时发布出错: ${e.message}`);
+      }
+    }
+
+    if (options.test) {
+      console.log("\n🛑 当前为测试模式(--test)，跳过真正的发布点击...");
+      await randomWait(page, 4000, 6000);
+      return true;
+    }
 
     console.log("\n🚀 正在自动点击发布...");
     const submitBtn = page.locator('button.submit, button:has-text("发布"), .publish-btn').first();
@@ -384,6 +460,46 @@ async function runBatch() {
     }
   }
 
+  let scheduleStartTimestamp = null;
+  let scheduleIntervalHours = parseFloat(argv['schedule-interval']) || 2;
+  const skipNight = !!argv['skip-night'];
+
+  function calculateNextScheduleTime(baseTime, index, interval, skipNight) {
+      if (index === 0) return baseTime;
+      
+      let nextTime = baseTime + index * interval * 60 * 60 * 1000;
+      
+      if (skipNight) {
+          // Because we just added index * interval blindly, it might land in multiple nights.
+          // A safer way is to step forward one interval at a time.
+          let t = baseTime;
+          for (let i = 0; i < index; i++) {
+              t += interval * 60 * 60 * 1000;
+              let d = new Date(t);
+              let h = d.getHours();
+              // If it lands in the night (>= 23 or < 7)
+              if (h >= 23 || h < 7) {
+                  // Push it to 07:00 of the (current or next) day
+                  if (h >= 23) {
+                      d.setDate(d.getDate() + 1);
+                  }
+                  d.setHours(7, 0, 0, 0);
+                  t = d.getTime();
+              }
+          }
+          nextTime = t;
+      }
+      return nextTime;
+  }
+
+  if (argv['schedule-start']) {
+      scheduleStartTimestamp = new Date(argv['schedule-start']).getTime();
+      if (isNaN(scheduleStartTimestamp)) {
+          console.log("❌ --schedule-start 时间格式不正确，建议使用 'YYYY-MM-DD HH:mm'");
+          return;
+      }
+  }
+
   if (argv['bulk-dir']) {
     const bulkDir = path.resolve(process.cwd(), argv['bulk-dir']);
     if (!fs.existsSync(bulkDir)) {
@@ -419,7 +535,12 @@ async function runBatch() {
       const chunkPaths = imgFiles.slice(i * chunk, (i + 1) * chunk);
       const postTitle = `${title} (${i + 1})`;
       console.log(`\n▶️ 开始执行 第 ${i + 1}/${totalPosts} 个任务...`);
-      const isSuccess = await publishTask(chunkPaths, postTitle, desc);
+      let taskOptions = { schedule: !!argv.schedule, test: !!argv.test };
+      if (scheduleStartTimestamp) {
+        taskOptions.scheduleTime = calculateNextScheduleTime(scheduleStartTimestamp, i, scheduleIntervalHours, skipNight);
+        taskOptions.schedule = true;
+      }
+      const isSuccess = await publishTask(chunkPaths, postTitle, desc, taskOptions);
       if (isSuccess) successCount++;
 
       if (i < totalPosts - 1) {
@@ -455,7 +576,12 @@ async function runBatch() {
       return;
     }
 
-    await publishTask(workDir, title, desc);
+    let taskOptions = { schedule: !!argv.schedule, test: !!argv.test };
+    if (scheduleStartTimestamp) {
+      taskOptions.scheduleTime = scheduleStartTimestamp;
+      taskOptions.schedule = true;
+    }
+    await publishTask(workDir, title, desc, taskOptions);
     return;
   }
 
@@ -507,7 +633,12 @@ async function runBatch() {
     const desc = rawTitle;
 
     console.log(`\n▶️ 开始执行 第 ${i + 1}/${selectedIndices.length} 个任务...`);
-    const isSuccess = await publishTask(workDir, title, desc);
+    let taskOptions = { schedule: !!argv.schedule, test: !!argv.test };
+    if (scheduleStartTimestamp) {
+      taskOptions.scheduleTime = calculateNextScheduleTime(scheduleStartTimestamp, i, scheduleIntervalHours, skipNight);
+      taskOptions.schedule = true;
+    }
+    const isSuccess = await publishTask(workDir, title, desc, taskOptions);
     if (isSuccess) successCount++;
     
     if (i < selectedIndices.length - 1) {
