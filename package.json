@@ -8,7 +8,8 @@
     "slide": "node auto_slide.js",
     "download": "node auto_download.js",
     "img": "node pdf_to_img.js",
-    "xhs": "node xhs_publisher.js"
+    "xhs": "node xhs_publisher.js",
+    "manage": "node manage_notebooks.js"
   },
   "repository": {
     "type": "git",
