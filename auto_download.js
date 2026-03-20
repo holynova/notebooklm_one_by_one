@@ -187,6 +187,7 @@ async function main() {
 
   const startTime = Date.now();
   let successCount = 0;
+  let skippedCount = 0;
 
   for (let i = 0; i < tasksToDownload.length; i++) {
     const nb = tasksToDownload[i];
@@ -195,6 +196,13 @@ async function main() {
     const outputPath = path.join(downloadDir, `${safeTitle}.pdf`);
 
     console.log(`▶️ [下载 ${i + 1}/${tasksToDownload.length}] (编号 ${itemNum})，目标: ${nb.title || '<无标题>'}`);
+
+    if (fs.existsSync(outputPath)) {
+      console.log(`   ⏭️ 跳过：本地已存在同名文件 => ${outputPath}`);
+      skippedCount++;
+      continue;
+    }
+
     console.log(`   ⏳ 正在执行命令并下载为 PDF...`);
 
     try {
@@ -225,7 +233,10 @@ async function main() {
 
   console.log('\n=============================================');
   console.log(`🌟 批量下载全部结束! 共耗时: ${totalSeconds} 秒`);
-  console.log(`✅ 成功文件数: ${successCount}/${tasksToDownload.length}`);
+  console.log(`✅ 成功下载文件数: ${successCount}/${tasksToDownload.length}`);
+  if (skippedCount > 0) {
+    console.log(`⏭️ 跳过已存在文件数: ${skippedCount}`);
+  }
   console.log(`📂 所有下载好的幻灯片保存在目录:\n   👉 ${downloadDir}`);
   console.log('=============================================');
   rl.close();
