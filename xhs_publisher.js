@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright-extra');
 const stealth = require('puppeteer-extra-plugin-stealth')();
+const sharp = require('sharp');
 
 chromium.use(stealth);
 
@@ -44,6 +45,69 @@ function parseIndices(inputStr, maxLen) {
   return Array.from(indices).sort((a, b) => a - b);
 }
 
+/**
+ * 自动生成拼图封面
+ * @param {string[]} imagePaths 原始图片路径
+ * @param {string} targetDir 输出目录
+ * @returns {Promise<string|null>} 拼图路径
+ */
+async function generateCollage(imagePaths, targetDir) {
+  if (!imagePaths || imagePaths.length === 0) return null;
+
+  try {
+    console.log(`🎨 正在生成拼图封面 (基于前 ${Math.min(imagePaths.length, 9)} 张图)...`);
+    
+    // 以第一张图为基准尺寸
+    const firstImage = sharp(imagePaths[0]);
+    const metadata = await firstImage.metadata();
+    const w = metadata.width;
+    const h = metadata.height;
+
+    const count = imagePaths.length;
+    // 数量 <= 4 用 2x2，否则用 3x3
+    const gridSize = count <= 4 ? 2 : 3;
+    const totalSlots = gridSize * gridSize;
+
+    const composites = [];
+    for (let i = 0; i < totalSlots; i++) {
+        const imgPath = imagePaths[i % count]; // 如果不够则循环
+        const row = Math.floor(i / gridSize);
+        const col = i % gridSize;
+
+        // 处理每一张小图：缩放并裁切到基准尺寸
+        const buffer = await sharp(imgPath)
+            .resize(w, h, { fit: 'cover', position: 'center' })
+            .toBuffer();
+
+        composites.push({
+            input: buffer,
+            top: row * h,
+            left: col * w,
+        });
+    }
+
+    const collageFilename = `collage_${Date.now()}.png`;
+    const outputPath = path.join(targetDir, collageFilename);
+
+    await sharp({
+        create: {
+            width: w * gridSize,
+            height: h * gridSize,
+            channels: 4,
+            background: { r: 255, g: 255, b: 255, alpha: 1 }
+        }
+    })
+    .composite(composites)
+    .toFile(outputPath);
+
+    console.log(`✅ 拼图封面已生成: ${outputPath}`);
+    return outputPath;
+  } catch (err) {
+    console.error(`❌ 生成拼图失败: ${err.message}`);
+    return null;
+  }
+}
+
 async function publishTask(workDirOrImagePaths, title, descText, options = {}) {
   console.log("==================================================");
   console.log(`🚀 开始发布任务: ${title}`);
@@ -79,6 +143,13 @@ async function publishTask(workDirOrImagePaths, title, descText, options = {}) {
   console.log(`📝 标题: ${title}`);
   console.log(`🖼️  图片: ${imagePaths.length} 张`);
   console.log("==================================================");
+
+  if (options.collage) {
+    const collagePath = await generateCollage(imagePaths, targetDir);
+    if (collagePath) {
+      imagePaths = [collagePath, ...imagePaths];
+    }
+  }
 
   const isGithubActions = process.env.GITHUB_ACTIONS === "true";
   const headlessMode = isGithubActions;
@@ -535,7 +606,7 @@ async function runBatch() {
       const chunkPaths = imgFiles.slice(i * chunk, (i + 1) * chunk);
       const postTitle = `${title} (${i + 1})`;
       console.log(`\n▶️ 开始执行 第 ${i + 1}/${totalPosts} 个任务...`);
-      let taskOptions = { schedule: !!argv.schedule, test: !!argv.test };
+      let taskOptions = { schedule: !!argv.schedule, test: !!argv.test, collage: !!argv.collage };
       if (scheduleStartTimestamp) {
         taskOptions.scheduleTime = calculateNextScheduleTime(scheduleStartTimestamp, i, scheduleIntervalHours, skipNight);
         taskOptions.schedule = true;
@@ -576,7 +647,7 @@ async function runBatch() {
       return;
     }
 
-    let taskOptions = { schedule: !!argv.schedule, test: !!argv.test };
+    let taskOptions = { schedule: !!argv.schedule, test: !!argv.test, collage: !!argv.collage };
     if (scheduleStartTimestamp) {
       taskOptions.scheduleTime = scheduleStartTimestamp;
       taskOptions.schedule = true;
@@ -633,7 +704,7 @@ async function runBatch() {
     const desc = rawTitle;
 
     console.log(`\n▶️ 开始执行 第 ${i + 1}/${selectedIndices.length} 个任务...`);
-    let taskOptions = { schedule: !!argv.schedule, test: !!argv.test };
+    let taskOptions = { schedule: !!argv.schedule, test: !!argv.test, collage: !!argv.collage };
     if (scheduleStartTimestamp) {
       taskOptions.scheduleTime = calculateNextScheduleTime(scheduleStartTimestamp, i, scheduleIntervalHours, skipNight);
       taskOptions.schedule = true;
