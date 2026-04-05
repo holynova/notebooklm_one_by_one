@@ -1,6 +1,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 const { chromium } = require('playwright-extra');
 const stealth = require('puppeteer-extra-plugin-stealth')();
 const sharp = require('sharp');
@@ -43,6 +44,27 @@ function parseIndices(inputStr, maxLen) {
     }
   }
   return Array.from(indices).sort((a, b) => a - b);
+}
+
+function calculateNextScheduleTime(baseTime, index, interval, skipNight) {
+    if (index === 0) return baseTime;
+    
+    let t = baseTime;
+    for (let i = 0; i < index; i++) {
+        t += interval * 60 * 60 * 1000;
+        let d = new Date(t);
+        let h = d.getHours();
+        // If it lands in the night (>= 23 or < 7)
+        if (skipNight && (h >= 23 || h < 7)) {
+            // Push it to 07:00 of the (current or next) day
+            if (h >= 23) {
+                d.setDate(d.getDate() + 1);
+            }
+            d.setHours(7, 0, 0, 0);
+            t = d.getTime();
+        }
+    }
+    return t;
 }
 
 /**
@@ -511,22 +533,164 @@ async function publishTask(workDirOrImagePaths, title, descText, options = {}) {
   }
 }
 
+/**
+ * 交互式配置模式
+ */
+async function interactiveMode() {
+  console.log("\n💬 进入交互式配置模式...");
+  const config = {};
+
+  /**
+   * macOS 专用文件夹选择器
+   */
+  async function chooseFolderMac() {
+    if (process.platform !== 'darwin') return null;
+    try {
+      const cmd = `osascript -e 'POSIX path of (choose folder with prompt "请选择包含图片的文件夹")'`;
+      const result = execSync(cmd).toString().trim();
+      return result;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  const mode = await askQuestion("请选择发布模式 [1: 文件夹中所有图片, 发一个帖子; 2: 按照图片拆分成多个帖子发送] (默认1): ");
+  config.mode = (mode === "2") ? "bulk" : "single";
+
+  let dirPath = "";
+  while (!dirPath) {
+    const currentDir = process.cwd();
+    console.log(`\n📂 当前目录: ${currentDir}`);
+    const inputPath = await askQuestion("请输入图片文件夹路径 (直接回车 呼起文件夹选择框, 或输入 ./images 等): ");
+    
+    if (!inputPath) {
+      if (process.platform === 'darwin') {
+        const chosen = await chooseFolderMac();
+        if (chosen) {
+          dirPath = chosen;
+        } else {
+          console.log("⚠️ 未选择文件夹，请手动输入路径。");
+        }
+      } else {
+        console.log("❌ 非 Mac 环境无法呼起选择框，请输入文件夹路径。");
+      }
+    } else {
+      const resolved = path.resolve(currentDir, inputPath);
+      if (fs.existsSync(resolved)) {
+        dirPath = resolved;
+      } else {
+        console.log(`❌ 路径不存在: ${resolved}\n请重新输入。`);
+      }
+    }
+  }
+  config.dir = dirPath;
+
+  if (config.mode === "bulk") {
+    const chunkInput = await askQuestion("每篇帖子包含几张图片? (默认9): ");
+    config.chunk = parseInt(chunkInput, 10) || 9;
+  }
+
+  config.title = await askQuestion("请输入标题 (留空则尝试读取 meta.json 或文件夹名): ");
+  config.desc = await askQuestion("请输入正文描述: ");
+
+  const collageInput = await askQuestion("是否开启自动拼图封面? (y/n, 默认n): ");
+  config.collage = collageInput.toLowerCase() === "y";
+
+  // 计算帖子概览
+  let totalPosts = 1;
+  const absPath = path.resolve(process.cwd(), config.dir);
+  const files = fs.readdirSync(absPath);
+  const imgFiles = files.filter(f => /\.(png|jpe?g)$/i.test(f));
+  if (config.mode === "bulk") {
+    totalPosts = Math.ceil(imgFiles.length / config.chunk);
+  }
+
+  console.log(`\n📊 任务概览: 共检测到 ${imgFiles.length} 张图片，将分为 ${totalPosts} 篇帖子发布。`);
+
+  // 定时发布设置
+  console.log("\n⏰ 定时发布设置:");
+  const defaultStartTime = new Date(Date.now() + 30 * 60 * 1000);
+  const defaultStartTimeStr = `${defaultStartTime.getFullYear()}-${String(defaultStartTime.getMonth() + 1).padStart(2, '0')}-${String(defaultStartTime.getDate()).padStart(2, '0')} ${String(defaultStartTime.getHours()).padStart(2, '0')}:${String(defaultStartTime.getMinutes()).padStart(2, '0')}`;
+  
+  const startTimeStr = await askQuestion(`请输入首篇发布时间 (默认 ${defaultStartTimeStr}): `);
+  config.scheduleStart = startTimeStr ? new Date(startTimeStr).getTime() : defaultStartTime.getTime();
+  if (isNaN(config.scheduleStart)) {
+      console.log("⚠️ 时间格式非法，使用默认时间。");
+      config.scheduleStart = defaultStartTime.getTime();
+  }
+
+  const intervalInput = await askQuestion("请输入发布间隔小时数 (默认 2): ");
+  config.interval = parseFloat(intervalInput) || 2;
+
+  const skipNightInput = await askQuestion("是否跳过凌晨 (23:00-07:00)? (y/n, 默认y): ");
+  config.skipNight = skipNightInput.toLowerCase() !== "n";
+
+  // 生成预览
+  console.log("\n📋 发布计划预览:");
+  console.log("--------------------------------------------------");
+  const plan = [];
+  for (let i = 0; i < totalPosts; i++) {
+      const pTime = calculateNextScheduleTime(config.scheduleStart, i, config.interval, config.skipNight);
+      const pTimeStr = new Date(pTime).toLocaleString('zh-CN', { hour12: false });
+      const pTitle = config.mode === "bulk" ? `${config.title || "未命名"} (${i + 1})` : (config.title || "未命名");
+      console.log(`[第 ${String(i + 1).padStart(2, '0')} 篇] ${pTimeStr} | ${pTitle}`);
+      plan.push({ time: pTime, title: pTitle });
+  }
+  console.log("--------------------------------------------------");
+
+  const confirm = await askQuestion("\n✅ 确认以上发布计划并开始执行? (y/n, 默认y): ");
+  if (confirm.toLowerCase() === "n") {
+    console.log("👋 已取消发布。");
+    process.exit(0);
+  }
+
+  // 构建模拟的 argv 对象
+  const simulatedArgv = {
+    collage: config.collage,
+    schedule: true,
+    'schedule-start': new Date(config.scheduleStart).toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-'),
+    'schedule-interval': config.interval,
+    'skip-night': config.skipNight,
+    title: config.title,
+    desc: config.desc,
+  };
+
+  if (config.mode === "bulk") {
+    simulatedArgv['bulk-dir'] = config.dir;
+    simulatedArgv.chunk = config.chunk;
+  } else {
+    simulatedArgv.dir = config.dir;
+  }
+
+  return simulatedArgv;
+}
+
 async function runBatch() {
   console.log("==================================================");
   console.log("小红书 Playwright(Node.js) 批量发布工具");
   console.log("==================================================");
 
   const args = process.argv.slice(2);
-  const argv = {};
-  for (let i = 0; i < args.length; i++) {
-    if (args[i].startsWith('--')) {
-      const key = args[i].substring(2);
-      const val = args[i + 1];
-      if (val && !val.startsWith('--')) {
-        argv[key] = val;
-        i++;
-      } else {
-        argv[key] = true;
+  let argv = {};
+
+  // 如果没有提供任何命令行参数，默认进入交互模式
+  if (args.length === 0) {
+    argv = await interactiveMode();
+  } else {
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === '-i' || args[i] === '--interactive') {
+        argv = await interactiveMode();
+        break; 
+      }
+      if (args[i].startsWith('--')) {
+        const key = args[i].substring(2);
+        const val = args[i + 1];
+        if (val && !val.startsWith('--')) {
+          argv[key] = val;
+          i++;
+        } else {
+          argv[key] = true;
+        }
       }
     }
   }
@@ -534,34 +698,6 @@ async function runBatch() {
   let scheduleStartTimestamp = null;
   let scheduleIntervalHours = parseFloat(argv['schedule-interval']) || 2;
   const skipNight = !!argv['skip-night'];
-
-  function calculateNextScheduleTime(baseTime, index, interval, skipNight) {
-      if (index === 0) return baseTime;
-      
-      let nextTime = baseTime + index * interval * 60 * 60 * 1000;
-      
-      if (skipNight) {
-          // Because we just added index * interval blindly, it might land in multiple nights.
-          // A safer way is to step forward one interval at a time.
-          let t = baseTime;
-          for (let i = 0; i < index; i++) {
-              t += interval * 60 * 60 * 1000;
-              let d = new Date(t);
-              let h = d.getHours();
-              // If it lands in the night (>= 23 or < 7)
-              if (h >= 23 || h < 7) {
-                  // Push it to 07:00 of the (current or next) day
-                  if (h >= 23) {
-                      d.setDate(d.getDate() + 1);
-                  }
-                  d.setHours(7, 0, 0, 0);
-                  t = d.getTime();
-              }
-          }
-          nextTime = t;
-      }
-      return nextTime;
-  }
 
   if (argv['schedule-start']) {
       scheduleStartTimestamp = new Date(argv['schedule-start']).getTime();
