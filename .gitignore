@@ -153,3 +153,7 @@ content/
 *.txt
 history.json
 output/
+
+# 本地任务数据（不提交到 git）
+daily_input_json/
+daily_tasks/

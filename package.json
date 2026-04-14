@@ -5,6 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "node main.js",
+    "daily": "node daily_slide.js",
     "slide": "node auto_slide.js",
     "download": "node auto_download.js",
     "img": "node pdf_to_img.js",
