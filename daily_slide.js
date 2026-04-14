@@ -13,6 +13,7 @@
 const { execSync } = require('child_process');
 const path = require('path');
 const taskQueue = require('./task_queue');
+const logger = require('./logger');
 
 // ─────────────────────────────────────────────
 // 配置
@@ -64,7 +65,7 @@ function extractNotebookId(output) {
 
 /** 执行 CLI 命令，返回 { success, output, error } */
 function runCLI(command, inheritStdio = false) {
-    console.log(`   >>> 运行命令: ${command}`);
+    logger.info(`   >>> 运行命令: ${command}`);
     try {
         const options = { encoding: 'utf-8' };
         if (inheritStdio) {
@@ -75,23 +76,24 @@ function runCLI(command, inheritStdio = false) {
         const output = execSync(command, options);
         const result = output ? output.trim() : '';
         if (!inheritStdio && result) {
-            console.log(`   <<< 执行结果:\n${result.split('\n').map(l => '       ' + l).join('\n')}`);
+            logger.info(`   <<< 执行结果:\n${result.split('\n').map(l => '       ' + l).join('\n')}`);
         } else if (!inheritStdio) {
-            console.log(`   <<< 执行结果: (空)`);
+            logger.info(`   <<< 执行结果: (空)`);
         }
         return { success: true, output: result };
-    } catch (error) {
-        const stdout = error.stdout ? error.stdout.toString().trim() : '';
-        const stderr = error.stderr ? error.stderr.toString().trim() : '';
+    } catch (err) {
+        const stdout = err.stdout ? err.stdout.toString().trim() : '';
+        const stderr = err.stderr ? err.stderr.toString().trim() : '';
         if (!inheritStdio && stdout) {
-            console.log(`   <<< 标准输出:\n${stdout.split('\n').map(l => '       ' + l).join('\n')}`);
+            logger.info(`   <<< 标准输出:\n${stdout.split('\n').map(l => '       ' + l).join('\n')}`);
         }
         if (stderr) {
-            console.log(`   <<< 错误输出:\n${stderr.split('\n').map(l => '       ' + l).join('\n')}`);
+            logger.error(`   <<< 错误输出:\n${stderr.split('\n').map(l => '       ' + l).join('\n')}`);
         } else if (!inheritStdio && !stdout) {
-            console.log(`   <<< 错误信息: ${error.message}`);
+            // 将原始 Error 对象传入，logger 会自动附加 stack
+            logger.error(`   <<< 命令执行异常:`, err);
         }
-        return { success: false, output: stdout, error: stderr || error.message };
+        return { success: false, output: stdout, error: stderr || err.message };
     }
 }
 
@@ -104,16 +106,16 @@ function runCLI(command, inheritStdio = false) {
  * @returns {string|null} notebookId，失败返回 null
  */
 function runPhaseNotebook(task) {
-    console.log(`\n   [Phase 1/3: notebook] 正在创建新 Notebook...`);
+    logger.info(`\n   [Phase 1/3: notebook] 正在创建新 Notebook...`);
     const res = runCLI(`${NLM} notebook create`);
     if (!res.success) return null;
 
     const notebookId = extractNotebookId(res.output);
     if (!notebookId) {
-        console.error(`   ⚠️ 无法从输出中提取 Notebook ID`);
+        logger.error(`   ⚠️ 无法从输出中提取 Notebook ID，原始输出: ${res.output || '(空)'}`);
         return null;
     }
-    console.log(`   ✅ Notebook 创建成功，ID: ${notebookId}`);
+    logger.info(`   ✅ Notebook 创建成功，ID: ${notebookId}`);
     return notebookId;
 }
 
@@ -122,10 +124,10 @@ function runPhaseNotebook(task) {
  * @returns {boolean} 是否成功
  */
 function runPhaseSource(task) {
-    console.log(`\n   [Phase 2/3: source] 正在导入 URL 为 source，等待解析完毕...`);
+    logger.info(`\n   [Phase 2/3: source] 正在导入 URL 为 source，等待解析完毕...`);
     const res = runCLI(`${NLM} source add ${task.notebookId} --url "${task.url}" --wait`, true);
     if (!res.success) return false;
-    console.log(`   ✅ URL 导入完成！`);
+    logger.info(`   ✅ URL 导入完成！`);
     return true;
 }
 
@@ -137,12 +139,12 @@ function runPhaseSource(task) {
  * @returns {boolean} 是否成功
  */
 function runPhaseSlide(task, focusPrompt, language) {
-    console.log(`\n   [Phase 3/3: slide] 正在生成 Slide（语言: ${language}, 提示词: "${focusPrompt}"）...`);
+    logger.info(`\n   [Phase 3/3: slide] 正在生成 Slide（语言: ${language}, 提示词: "${focusPrompt}"）...`);
     const escapedPrompt = focusPrompt.replace(/"/g, '\\"');
     const command = `${NLM} slides create ${task.notebookId} --language ${language} --focus "${escapedPrompt}" --confirm`;
     const res = runCLI(command, true);
     if (!res.success) return false;
-    console.log(`   ✅ Slide 生成成功！`);
+    logger.info(`   ✅ Slide 生成成功！`);
     return true;
 }
 
@@ -151,9 +153,10 @@ function runPhaseSlide(task, focusPrompt, language) {
 // ─────────────────────────────────────────────
 
 async function main() {
-    console.log('=============================================');
-    console.log('🗓️  NotebookLM Daily Slide 批量生成脚本');
-    console.log('=============================================\n');
+    logger.divider();
+    logger.info('🗓️  NotebookLM Daily Slide 批量生成脚本');
+    logger.divider();
+    logger.info(`📄 日志文件: ${logger.logFilePath}`);
 
     // 解析参数
     const args = parseArgs();
@@ -161,38 +164,38 @@ async function main() {
     const batchSize = parseInt(args.batch || DEFAULT_BATCH_SIZE, 10);
     const language = (args.language || DEFAULT_LANGUAGE).trim();
 
-    console.log(`⚙️  配置: batch=${batchSize}, language=${language}, prompt="${focusPrompt}"`);
-    console.log(`⚙️  nlm 路径: ${NLM}`);
+    logger.info(`⚙️  配置: batch=${batchSize}, language=${language}, prompt="${focusPrompt}"`);
+    logger.info(`⚙️  nlm 路径: ${NLM}`);
 
     // ── 阶段一：同步输入 JSON ──────────────────────
-    console.log('\n--- 阶段一: 同步输入文件 ---\n');
+    logger.info('\n--- 阶段一: 同步输入文件 ---\n');
     let syncResult;
     try {
         syncResult = taskQueue.syncFromInputJson(INPUT_JSON_PATH);
-        console.log(`✅ 同步完成: 新增 ${syncResult.added} 个任务，跳过 ${syncResult.skipped} 个已有任务`);
+        logger.info(`✅ 同步完成: 新增 ${syncResult.added} 个任务，跳过 ${syncResult.skipped} 个已有任务`);
     } catch (e) {
-        console.error('❌ 同步输入文件失败:', e.message);
+        logger.error('❌ 同步输入文件失败:', e);
         process.exit(1);
     }
 
     // ── 阶段二：取批次任务 ─────────────────────────
-    console.log('\n--- 阶段二: 获取待处理任务 ---\n');
+    logger.info('\n--- 阶段二: 获取待处理任务 ---\n');
     const batch = taskQueue.getNextBatch(batchSize);
 
     if (batch.length === 0) {
-        console.log('✅ 当前没有待处理的任务（全部完成或已放弃）。');
+        logger.info('✅ 当前没有待处理的任务（全部完成或已放弃）。');
         taskQueue.printSummary();
         return;
     }
 
-    console.log(`📋 本批次共 ${batch.length} 个任务：`);
+    logger.info(`📋 本批次共 ${batch.length} 个任务：`);
     batch.forEach((t, i) => {
         const titleShort = t.title ? t.title.slice(0, 40) + (t.title.length > 40 ? '...' : '') : t.url;
-        console.log(`   ${i + 1}. [${t.phase}/${t.status}] ${titleShort}`);
+        logger.info(`   ${i + 1}. [${t.phase}/${t.status}] ${titleShort}`);
     });
 
     // ── 阶段三：逐任务执行 ─────────────────────────
-    console.log('\n--- 阶段三: 开始执行任务 ---\n');
+    logger.info('\n--- 阶段三: 开始执行任务 ---\n');
 
     let successCount = 0;
     let failedCount = 0;
@@ -203,15 +206,16 @@ async function main() {
         const task = queue[batch[i].url];
 
         if (!task) {
-            console.warn(`⚠️ 任务不存在，跳过: ${batch[i].url}`);
+            logger.warn(`⚠️ 任务不存在，跳过: ${batch[i].url}`);
             continue;
         }
 
         const taskNum = i + 1;
         const titleShort = task.title ? task.title.slice(0, 50) : task.url;
-        console.log(`\n▶️  [任务 ${taskNum}/${batch.length}] ${titleShort}`);
-        console.log(`   URL: ${task.url}`);
-        console.log(`   当前状态: phase=${task.phase}, status=${task.status}, failCount=${task.failCount}`);
+        logger.divider('-');
+        logger.info(`▶️  [任务 ${taskNum}/${batch.length}] ${titleShort}`);
+        logger.info(`   URL: ${task.url}`);
+        logger.info(`   当前状态: phase=${task.phase}, status=${task.status}, failCount=${task.failCount}`);
 
         let taskFailed = false;
 
@@ -221,7 +225,7 @@ async function main() {
             if (!notebookId) {
                 const fc = taskQueue.markFailed(task.url);
                 taskFailed = true;
-                console.error(`   ⚠️ Notebook 创建失败 (累计失败 ${fc} 次${fc >= taskQueue.MAX_RETRY ? '，已放弃' : '，下次重试'})`);
+                logger.error(`   ⚠️ Notebook 创建失败 (累计失败 ${fc} 次${fc >= taskQueue.MAX_RETRY ? '，已放弃' : '，下次重试'})`);
             } else {
                 taskQueue.markNotebookCreated(task.url, notebookId);
                 task.notebookId = notebookId; // 本地更新，下面的步骤会用到
@@ -236,7 +240,7 @@ async function main() {
             if (!ok) {
                 const fc = taskQueue.markFailed(task.url);
                 taskFailed = true;
-                console.error(`   ⚠️ Source 导入失败 (累计失败 ${fc} 次${fc >= taskQueue.MAX_RETRY ? '，已放弃' : '，下次重试'})`);
+                logger.error(`   ⚠️ Source 导入失败 (累计失败 ${fc} 次${fc >= taskQueue.MAX_RETRY ? '，已放弃' : '，下次重试'})`);
             } else {
                 taskQueue.markSourceImported(task.url);
                 task.phase = 'slide';
@@ -250,7 +254,7 @@ async function main() {
             if (!ok) {
                 const fc = taskQueue.markFailed(task.url);
                 taskFailed = true;
-                console.error(`   ⚠️ Slide 生成失败 (累计失败 ${fc} 次${fc >= taskQueue.MAX_RETRY ? '，已放弃' : '，下次重试'})`);
+                logger.error(`   ⚠️ Slide 生成失败 (累计失败 ${fc} 次${fc >= taskQueue.MAX_RETRY ? '，已放弃' : '，下次重试'})`);
             } else {
                 taskQueue.markSlideCreated(task.url);
             }
@@ -260,25 +264,26 @@ async function main() {
             failedCount++;
         } else {
             successCount++;
-            console.log(`\n   🎉 [任务 ${taskNum}/${batch.length}] 完成！Slide 已生成，等待下载。`);
+            logger.info(`\n   🎉 [任务 ${taskNum}/${batch.length}] 完成！Slide 已生成，等待下载。`);
         }
 
         // 任务之间随机等待，防止被风控
         if (i < batch.length - 1) {
             const delayMs = getRandomDelay();
-            console.log(`\n   😴 随机等待 ${(delayMs / 1000).toFixed(1)} 秒，准备执行下一个任务...`);
+            logger.info(`\n   😴 随机等待 ${(delayMs / 1000).toFixed(1)} 秒，准备执行下一个任务...`);
             await sleep(delayMs);
         }
     }
 
     // ── 汇总 ──────────────────────────────────────
-    console.log('\n=============================================');
-    console.log(`📊 本批次执行完毕: ✅ 成功 ${successCount} 个 / ❌ 失败 ${failedCount} 个`);
-    console.log('=============================================');
+    logger.divider();
+    logger.info(`📊 本批次执行完毕: ✅ 成功 ${successCount} 个 / ❌ 失败 ${failedCount} 个`);
+    logger.divider();
     taskQueue.printSummary();
+    logger.info(`📄 完整日志: ${logger.logFilePath}`);
 }
 
 main().catch(err => {
-    console.error('\n💥 发生未预期的脚本异常:', err);
+    logger.error('\n💥 发生未预期的脚本异常:', err);
     process.exit(1);
 });
