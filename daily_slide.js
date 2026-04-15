@@ -63,7 +63,7 @@ function extractNotebookId(output) {
     return match ? match[0] : null;
 }
 
-/** 执行 CLI 命令，返回 { success, output, error } */
+/** 执行 CLI 命令，返回 { success, output, error, exitCode } */
 function runCLI(command, inheritStdio = false) {
     logger.info(`   >>> 运行命令: ${command}`);
     try {
@@ -80,10 +80,11 @@ function runCLI(command, inheritStdio = false) {
         } else if (!inheritStdio) {
             logger.info(`   <<< 执行结果: (空)`);
         }
-        return { success: true, output: result };
+        return { success: true, output: result, exitCode: 0 };
     } catch (err) {
         const stdout = err.stdout ? err.stdout.toString().trim() : '';
         const stderr = err.stderr ? err.stderr.toString().trim() : '';
+        const exitCode = err.status || 0;
         if (!inheritStdio && stdout) {
             logger.info(`   <<< 标准输出:\n${stdout.split('\n').map(l => '       ' + l).join('\n')}`);
         }
@@ -93,8 +94,22 @@ function runCLI(command, inheritStdio = false) {
             // 将原始 Error 对象传入，logger 会自动附加 stack
             logger.error(`   <<< 命令执行异常:`, err);
         }
-        return { success: false, output: stdout, error: stderr || err.message };
+        return { success: false, output: stdout, error: stderr || err.message, exitCode };
     }
+}
+
+/**
+ * 检查错误是否是由于 NotebookLM API 返回错误码 142 导致。
+ * 错误码 142 表示资源不可用或临时性错误，应该跳过而不是标记为失败。
+ * @param {string} errorOutput - 错误输出字符串
+ * @param {number} exitCode - 进程退出码
+ * @returns {boolean}
+ */
+function isErrorCode142(errorOutput, exitCode) {
+    if (!errorOutput) return false;
+    // 错误码 142 可能出现在多种格式的错误消息中
+    // 例如: "Error 142", "error_code: 142", "[142]", "code 142" 等
+    return /\b142\b/.test(errorOutput) || exitCode === 142;
 }
 
 // ─────────────────────────────────────────────
@@ -103,32 +118,36 @@ function runCLI(command, inheritStdio = false) {
 
 /**
  * 阶段 1：创建 Notebook
- * @returns {string|null} notebookId，失败返回 null
+ * @returns {{ notebookId: string|null, exitCode: number, errorOutput: string }}
  */
 function runPhaseNotebook(task) {
     logger.info(`\n   [Phase 1/3: notebook] 正在创建新 Notebook...`);
     const res = runCLI(`${NLM} notebook create`);
-    if (!res.success) return null;
+    if (!res.success) {
+        return { notebookId: null, exitCode: res.exitCode, errorOutput: res.error };
+    }
 
     const notebookId = extractNotebookId(res.output);
     if (!notebookId) {
         logger.error(`   ⚠️ 无法从输出中提取 Notebook ID，原始输出: ${res.output || '(空)'}`);
-        return null;
+        return { notebookId: null, exitCode: 1, errorOutput: '无法提取 Notebook ID' };
     }
     logger.info(`   ✅ Notebook 创建成功，ID: ${notebookId}`);
-    return notebookId;
+    return { notebookId, exitCode: 0, errorOutput: '' };
 }
 
 /**
  * 阶段 2：导入 URL 作为 Source
- * @returns {boolean} 是否成功
+ * @returns {{ ok: boolean, exitCode: number, errorOutput: string }}
  */
 function runPhaseSource(task) {
     logger.info(`\n   [Phase 2/3: source] 正在导入 URL 为 source，等待解析完毕...`);
     const res = runCLI(`${NLM} source add ${task.notebookId} --url "${task.url}" --wait`, true);
-    if (!res.success) return false;
+    if (!res.success) {
+        return { ok: false, exitCode: res.exitCode, errorOutput: res.error };
+    }
     logger.info(`   ✅ URL 导入完成！`);
-    return true;
+    return { ok: true, exitCode: 0, errorOutput: '' };
 }
 
 /**
@@ -136,16 +155,18 @@ function runPhaseSource(task) {
  * @param {object} task - 任务对象
  * @param {string} focusPrompt - 提示词
  * @param {string} language - BCP-47 语言码（如 zh-CN、en）
- * @returns {boolean} 是否成功
+ * @returns {{ ok: boolean, exitCode: number, errorOutput: string }}
  */
 function runPhaseSlide(task, focusPrompt, language) {
     logger.info(`\n   [Phase 3/3: slide] 正在生成 Slide（语言: ${language}, 提示词: "${focusPrompt}"）...`);
     const escapedPrompt = focusPrompt.replace(/"/g, '\\"');
     const command = `${NLM} slides create ${task.notebookId} --language ${language} --focus "${escapedPrompt}" --confirm`;
     const res = runCLI(command, true);
-    if (!res.success) return false;
+    if (!res.success) {
+        return { ok: false, exitCode: res.exitCode, errorOutput: res.error };
+    }
     logger.info(`   ✅ Slide 生成成功！`);
-    return true;
+    return { ok: true, exitCode: 0, errorOutput: '' };
 }
 
 // ─────────────────────────────────────────────
@@ -221,14 +242,19 @@ async function main() {
 
         // ── Phase: notebook ──────────────────────────
         if (task.phase === 'notebook') {
-            const notebookId = runPhaseNotebook(task);
-            if (!notebookId) {
+            const result = runPhaseNotebook(task);
+            if (!result.notebookId) {
+                // 检查是否是错误码 142：跳过此任务，不记录失败
+                if (isErrorCode142(result.errorOutput, result.exitCode)) {
+                    logger.warn(`   ⚠️ Notebook 创建遇到错误码 142（资源不可用），跳过此任务，继续下一个`);
+                    continue;
+                }
                 const fc = taskQueue.markFailed(task.url);
                 taskFailed = true;
                 logger.error(`   ⚠️ Notebook 创建失败 (累计失败 ${fc} 次${fc >= taskQueue.MAX_RETRY ? '，已放弃' : '，下次重试'})`);
             } else {
-                taskQueue.markNotebookCreated(task.url, notebookId);
-                task.notebookId = notebookId; // 本地更新，下面的步骤会用到
+                taskQueue.markNotebookCreated(task.url, result.notebookId);
+                task.notebookId = result.notebookId; // 本地更新，下面的步骤会用到
                 task.phase = 'source';
                 task.status = 'pending';
             }
@@ -236,8 +262,13 @@ async function main() {
 
         // ── Phase: source ────────────────────────────
         if (!taskFailed && task.phase === 'source') {
-            const ok = runPhaseSource(task);
-            if (!ok) {
+            const result = runPhaseSource(task);
+            if (!result.ok) {
+                // 检查是否是错误码 142：跳过此任务，不记录失败
+                if (isErrorCode142(result.errorOutput, result.exitCode)) {
+                    logger.warn(`   ⚠️ Source 导入遇到错误码 142（资源不可用），跳过此任务，继续下一个`);
+                    continue;
+                }
                 const fc = taskQueue.markFailed(task.url);
                 taskFailed = true;
                 logger.error(`   ⚠️ Source 导入失败 (累计失败 ${fc} 次${fc >= taskQueue.MAX_RETRY ? '，已放弃' : '，下次重试'})`);
@@ -250,8 +281,13 @@ async function main() {
 
         // ── Phase: slide ─────────────────────────────
         if (!taskFailed && task.phase === 'slide') {
-            const ok = runPhaseSlide(task, focusPrompt, language);
-            if (!ok) {
+            const result = runPhaseSlide(task, focusPrompt, language);
+            if (!result.ok) {
+                // 检查是否是错误码 142：跳过此任务，不记录失败
+                if (isErrorCode142(result.errorOutput, result.exitCode)) {
+                    logger.warn(`   ⚠️ Slide 生成遇到错误码 142（资源不可用），跳过此任务，继续下一个`);
+                    continue;
+                }
                 const fc = taskQueue.markFailed(task.url);
                 taskFailed = true;
                 logger.error(`   ⚠️ Slide 生成失败 (累计失败 ${fc} 次${fc >= taskQueue.MAX_RETRY ? '，已放弃' : '，下次重试'})`);
