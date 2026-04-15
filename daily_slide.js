@@ -64,14 +64,17 @@ function extractNotebookId(output) {
 }
 
 /** 执行 CLI 命令，返回 { success, output, error, exitCode } */
-function runCLI(command, inheritStdio = false) {
+function runCLI(command, inheritStdio = false, timeoutSec = 300, stdinData = null) {
     logger.info(`   >>> 运行命令: ${command}`);
     try {
-        const options = { encoding: 'utf-8' };
+        const options = { encoding: 'utf-8', timeout: timeoutSec * 1000 };
         if (inheritStdio) {
             options.stdio = 'inherit';
         } else {
             options.stdio = ['ignore', 'pipe', 'pipe'];
+            if (stdinData) {
+                options.input = stdinData; // 通过 stdin 传入数据（如 "y\n" 确认交互提示）
+            }
         }
         const output = execSync(command, options);
         const result = output ? output.trim() : '';
@@ -85,6 +88,8 @@ function runCLI(command, inheritStdio = false) {
         const stdout = err.stdout ? err.stdout.toString().trim() : '';
         const stderr = err.stderr ? err.stderr.toString().trim() : '';
         const exitCode = err.status || 0;
+        // 综合所有错误信息来源用于后续判断
+        const errorOutput = stderr || stdout || err.message;
         if (!inheritStdio && stdout) {
             logger.info(`   <<< 标准输出:\n${stdout.split('\n').map(l => '       ' + l).join('\n')}`);
         }
@@ -94,7 +99,7 @@ function runCLI(command, inheritStdio = false) {
             // 将原始 Error 对象传入，logger 会自动附加 stack
             logger.error(`   <<< 命令执行异常:`, err);
         }
-        return { success: false, output: stdout, error: stderr || err.message, exitCode };
+        return { success: false, output: stdout, error: errorOutput, exitCode };
     }
 }
 
@@ -158,10 +163,11 @@ function runPhaseSource(task) {
  * @returns {{ ok: boolean, exitCode: number, errorOutput: string }}
  */
 function runPhaseSlide(task, focusPrompt, language) {
-    logger.info(`\n   [Phase 3/3: slide] 正在生成 Slide（语言: ${language}, 提示词: "${focusPrompt}"）...`);
+    logger.info(`\n   [Phase 3/3: slide] 正在发起 Slide 生成请求（语言: ${language}, 提示词: "${focusPrompt}"）...`);
     const escapedPrompt = focusPrompt.replace(/"/g, '\\"');
+    // 使用 --confirm：跳过交互确认，且不等 slide 生成完成（API 返回"已开始"即返回）
     const command = `${NLM} slides create ${task.notebookId} --language ${language} --focus "${escapedPrompt}" --confirm`;
-    const res = runCLI(command, true);
+    const res = runCLI(command, false);
     if (!res.success) {
         return { ok: false, exitCode: res.exitCode, errorOutput: res.error };
     }
@@ -283,9 +289,9 @@ async function main() {
         if (!taskFailed && task.phase === 'slide') {
             const result = runPhaseSlide(task, focusPrompt, language);
             if (!result.ok) {
-                // 检查是否是错误码 142：跳过此任务，不记录失败
-                if (isErrorCode142(result.errorOutput, result.exitCode)) {
-                    logger.warn(`   ⚠️ Slide 生成遇到错误码 142（资源不可用），跳过此任务，继续下一个`);
+                // 检查是否是错误码 142 或 8：跳过此任务，不记录失败（限流或资源不可用，下次重试）
+                if (isErrorCode142(result.errorOutput, result.exitCode) || /\bcode[,\s]+8\b/.test(result.errorOutput)) {
+                    logger.warn(`   ⚠️ Slide 生成遇到错误码 ${/\bcode[,\s]+8\b/.test(result.errorOutput) ? '8（限流）' : '142（资源不可用）'}，跳过此任务，继续下一个`);
                     continue;
                 }
                 const fc = taskQueue.markFailed(task.url);
