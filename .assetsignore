@@ -1,0 +1,14 @@
+.git/
+.github/
+.wrangler/
+.playwright-cli/
+.gitignore
+README.md
+package.json
+package-lock.json
+pnpm-lock.yaml
+*.js
+*.json
+*.env*
+node_modules/
+slides_downloads/

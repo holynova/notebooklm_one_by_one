@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="NotebookLM One by One：批量生成、下载和整理 NotebookLM 幻灯片的本地自动化工具。" />
+    <title>NotebookLM One by One</title>
+    <style>
+      :root { color-scheme: dark; --bg: #11100e; --panel: #211e19; --text: #fff8ec; --muted: #c7bca9; --accent: #ffbf69; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: radial-gradient(circle at 12% 0, #49311b, transparent 38%), var(--bg); color: var(--text); font: 16px/1.7 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      main { width: min(960px, calc(100% - 32px)); margin: 0 auto; padding: 72px 0; }
+      .eyebrow { color: var(--accent); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+      h1 { max-width: 720px; margin: 12px 0; font-size: clamp(2.4rem, 7vw, 5rem); line-height: 1.02; letter-spacing: -.05em; }
+      .lead { max-width: 700px; color: var(--muted); font-size: 1.2rem; }
+      .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 28px 0 52px; }
+      a { color: inherit; }
+      .button { display: inline-block; padding: 10px 16px; border: 1px solid #66533c; border-radius: 999px; text-decoration: none; }
+      .button.primary { border-color: var(--accent); background: var(--accent); color: #291707; font-weight: 700; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+      article { padding: 20px; border: 1px solid #433a2d; border-radius: 18px; background: color-mix(in srgb, var(--panel) 90%, transparent); }
+      h2 { margin: 0 0 8px; font-size: 1.1rem; }
+      article p { margin: 0; color: var(--muted); }
+      footer { margin-top: 52px; color: var(--muted); font-size: .9rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="eyebrow">NotebookLM One by One · local automation</div>
+      <h1>把一批网址，变成一组可下载的幻灯片。</h1>
+      <p class="lead">一个基于 Node.js 的本地自动化工具：导入来源、批量生成 NotebookLM Slide Deck、下载 PDF，并继续整理成长图或发布素材。</p>
+      <div class="actions">
+        <a class="button primary" href="https://github.com/holynova/notebooklm_one_by_one">查看源代码</a>
+        <a class="button" href="https://github.com/holynova/notebooklm_one_by_one#快速开始">快速开始</a>
+      </div>
+      <section class="grid" aria-label="Features">
+        <article><h2>批量投喂</h2><p>按行、空格或逗号输入多个 URL，统一创建 Notebook 并导入来源。</p></article>
+        <article><h2>幻灯片下载</h2><p>扫描 Slide Deck，按范围选择并下载 PDF 到本地目录。</p></article>
+        <article><h2>素材整理</h2><p>支持 PDF 转图、拼图和后续的小红书图文发布流程。</p></article>
+        <article><h2>安全可中断</h2><p>日志记录每一步，Ctrl+C 会安全停止当前任务并保留已完成结果。</p></article>
+      </section>
+      <footer>云端页面是项目介绍与文档入口；实际 NotebookLM、浏览器登录态和文件处理均在本地 Node.js 环境执行。</footer>
+    </main>
+  </body>
+</html>

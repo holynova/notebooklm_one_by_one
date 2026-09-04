@@ -1,0 +1,8 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "notebooklm-one-by-one",
+  "compatibility_date": "2026-09-04",
+  "workers_dev": false,
+  "assets": { "directory": "." },
+  "routes": [{ "pattern": "notebooklm-one-by-one.xiaosang.cc", "custom_domain": true }]
+}

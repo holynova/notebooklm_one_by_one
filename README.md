@@ -1,5 +1,7 @@
 # NotebookLM Auto Slide 自动化生成工具
 
+项目介绍页：[notebooklm-one-by-one.xiaosang.cc](https://notebooklm-one-by-one.xiaosang.cc/)。云端页面仅发布静态文档；NotebookLM 自动化和本地登录态仍在 Node.js 环境执行。
+
 这是一个基于 Node.js 编写的懒人批量生成工具。只需提供一批 URL，即可让 NotebookLM 帮您自动创建新的 Notebook、导入来源、并批量生出漂亮的幻灯片 (Slide Deck)！
 
 ## 🌟 特点
@@ -102,5 +104,4 @@ pnpm xhs --bulk-dir "output/" --chunk 5 --title "童年动画片" --schedule-sta
 ## ⚠️ 常见问答
 - **遇到报错并跳出？**
   本工具由于采用了完整的错误阻断。如果遇到未登录、超时或是 CLI 的问题，为了保证安全它会直接退出进程。您可以根据控制台输出的原始 CLI `<<< 错误信息` 解决后再继续。
-
 
