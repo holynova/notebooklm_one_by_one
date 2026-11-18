@@ -1,106 +1,84 @@
-# NotebookLM Auto Slide 自动化生成工具
+<p align="right"><a href="README.en.md">English</a></p>
 
-这是一个基于 Node.js 编写的懒人批量生成工具。只需提供一批 URL，即可让 NotebookLM 帮您自动创建新的 Notebook、导入来源、并批量生出漂亮的幻灯片 (Slide Deck)！
+<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%" alt="NotebookLM One by One — 五步流水线：批量 URL 投喂 → 创建 Notebook 导入来源 → 生成 Slide Deck → 下载 PDF 转图拼图 → 小红书图文发布">
+</p>
 
-## 🌟 特点
-1. **自动化环境与登录检查**：全自动检测依赖与认证情况，支持一键帮你安装和登录授权。
-2. **支持批量 URL 投喂**：支持换行、空格、逗号等方式一次性丢入多个 URL 自动生成 Slide。
-3. **幻灯片批量下载专家**：提供 `auto_download.js` 一键拉取所有项目，过滤幻灯片并支持批量下载为 PDF。
-4. **一体化管理助手**：新增 `manage_notebooks.js` 提供实时扫描、一键清理空项目、范围选择生成 Slide 以及带查重的自动创建功能。
-5. **带有详细的执行日志**：原生记录每一步 CLI 发送的命令以及输出的日志，方便排错。
-6. **安全的中断自保机制**：全方位支持 `Ctrl+C` 信号拦截。生成或下载过程中均支持随时安全打断。
+<p align="center">
+  <a href="https://xiaosang.cc/notebooklm-one-by-one/">▶ 项目主页</a>
+  ·
+  <a href="https://github.com/holynova/notebooklm_one_by_one">GitHub 仓库</a>
+</p>
 
-## 📦 快速开始
+NotebookLM One by One 是一个基于 Node.js 的本地自动化工具：只需提供一批 URL，它调用 NotebookLM 命令行（`nlm`）自动创建 Notebook、导入来源、批量生成幻灯片（Slide Deck），再把幻灯片下载为 PDF、转成长图，并可一键发布到小红书。全部在本地运行，支持断点续传与安全中断。
 
-### 运行批量生成主入口
+## 工作流
+
+```
+URL 列表 ──▶ 创建 Notebook ──▶ 导入来源 ──▶ 生成 Slide Deck
+                                                        │
+PDF 下载 ◀── 扫描已有项目 ───────────────────────────────┘
+   │
+   ▼
+PDF 转图拼长图 ──▶ 小红书图文发布（可定时、可批量分 P）
+```
+
+## 命令
+
 ```bash
+pnpm install   # 安装 Node 依赖
+```
+
+| 命令 | 脚本 | 作用 |
+|---|---|---|
+| `pnpm start` | `main.js` | 主入口：先环境检查，再交互式批量生成 |
+| `pnpm slide` | `auto_slide.js` | 跳过环境检查，直接交互式生成 |
+| `pnpm daily` | `daily_slide.js` | 非交互批量：从 `daily_input_json/input.json` 取任务执行 |
+| `pnpm download` | `auto_download.js` | 扫描带幻灯片的项目，按范围下载 PDF 到 `slides_downloads/` |
+| `pnpm manage` | `manage_notebooks.js` | 管理助手：扫描、清理空项目、查重、范围补刷 Slide |
+| `pnpm img` | `pdf_to_img.js` | PDF 转图拼图：按排版拼成小红书长图 |
+| `pnpm xhs` | `xhs_publisher.js` | 小红书自动发布：交互队列、批量分 P、定时发布 |
+
+## 快速开始
+
+```bash
+pnpm install
 pnpm start
 ```
 
-**执行效果**
-1. **阶段一：环境检查 (`check_env.js`)**
-   - 检查 `nlm` 是否安装（若未安装将自动调用 uv 帮你安装）。
-   - 检查 `nlm` 是否已授权您的 Google 账号（未登录会自动打开浏览器授权）。
-2. **阶段二：执行生成任务 (`auto_slide.js`)**
-   - 弹出交互式界面，在此不断粘贴您的所有目标 URL，并输入您的 Prompt。
-   - 自动发车执行批量生成。
+1. **环境检查**（`check_env.js`）：检查 `nlm` 是否安装——未安装会询问并调用 `uv tool install notebooklm-mcp-cli` 自动安装；检查是否已授权 Google 账号——未登录会自动打开浏览器授权。
+2. **批量生成**（`auto_slide.js`）：交互式粘贴 URL 列表（换行、空格、逗号分隔均可），输入生成提示词（默认"用中文生成详细的slide"），自动逐个创建 Notebook、导入来源、生成 Slide Deck。
 
----
+前置要求：Python `uv`（用于安装 `nlm` CLI）、Google 账号（NotebookLM 授权）。小红书发布还需安装 Playwright Chromium（`pnpm exec playwright install chromium`）。
 
-### 运行批量下载入口
-```bash
-pnpm download
+## 功能细节
+
+- **批量 URL 投喂**：一次粘贴多个 URL，逐个自动走完 Notebook → 来源 → Slide 三个阶段。
+- **非交互批量**（`daily_slide.js`）：从 `daily_input_json/input.json` 同步任务，每批默认最多 10 个，支持断点续传与失败重试，任务间随机延时。
+- **幻灯片批量下载**：扫描名下所有含 `slide_deck` 的项目，按时间排序编号，输入 `1-10` 这样的范围即批量下载 PDF；扫描中按 `Ctrl+C` 不会崩溃，直接带着已扫出的结果进入下一步。
+- **管理助手**：流式扫描全部 Notebook，一键删除来源为 0 的空项目；新建时做重复 URL 检测；可按范围批量补刷缺失的 Slide。
+- **PDF 转图拼图**：PDF 页面转图片后按排版拼接（垂直 / 水平、每张大图放几页、间距多少像素），输出小红书长图；支持命令行参数跳过问答，如 `pnpm img --file 1,2 --layout 1 --grid 4 --gap 10`。
+- **小红书发布**：Playwright + stealth 隐身浏览器自动填标题、上传图片、尝试滑块验证码、点击发布；支持交互式多选队列、文件夹批量分 P（默认每篇 9 张图）、定时发布（`--schedule-start` + `--schedule-interval`）与跳过深夜（`--skip-night`，23:00–07:00 顺延到 07:00）。
+- **日志与中断**：每一步 CLI 命令与输出都记录日志；生成与下载过程均可 `Ctrl+C` 安全打断，已完成的结果保留。
+
+## 技术
+
+- Node.js + pnpm；核心是调用 `nlm` CLI（`notebooklm-mcp-cli`，经 `uv tool install` 安装）完成 NotebookLM 操作。
+- 小红书发布用 Playwright（`playwright-extra` + stealth 插件）驱动 Chromium。
+- PDF 转图用 `pdf2pic`，拼图用 `sharp`；配置用 `dotenv`。
+- 任务队列（`task_queue.js`）与历史记录（`history.js`）支撑断点续传；`logger.js` 统一日志格式。
+
 ```
-
-**执行效果**
-1. **智能过滤**：询问限制检查项 `N`（也可查全部），然后自动查询您名下所有包含 `slide_deck` 幻灯片的项目。
-2. **灵活把控**：在扫描 Notebook 的漫长过程中随时按下 `Ctrl+C`，不仅不会崩溃，还能直接带着扫出的结果进入下一步。
-3. **范围下载**：列出按时间排序带编号的列表后，输入如 `1-10` 即可批量下载为 PDF 至 `slides_downloads` 本地文件夹。
-
-## ⚙️ 依赖项 & 命令大全
-除了依赖 Python `uv` 之外，本项目现已全面使用 `pnpm` 进行依赖管理。
-在安装好后先运行 `pnpm install` 安装所有 Node 依赖。
-
-可用的快捷命令及对应例子包括：
-
-#### 1. 一键生成助手 (`start` / `slide`)
-检查环境并自动提问需要喂入的 URL 列表。
-```bash
-# 自动检测是否登录，并开始问答式生成
-pnpm start
-
-# 如果你确定环境没问题，可以直接跳过检查执行核心版
-pnpm slide
+main.js                 主入口：环境检查 → 批量生成
+check_env.js            环境检查：nlm 安装与 Google 授权
+install_nlm.js          经 uv 安装 notebooklm-mcp-cli
+auto_slide.js           交互式批量生成 Slide Deck
+daily_slide.js          非交互批量：input.json 任务队列，断点续传
+auto_download.js        扫描并按范围下载 Slide PDF
+manage_notebooks.js     Notebook 管理：扫描 / 清理空项目 / 查重 / 补刷
+pdf_to_img.js           PDF 转图并拼长图
+xhs_publisher.js        小红书自动发布（队列 / 批量分 P / 定时）
+task_queue.js           任务队列：取批、重试、断点续传
+history.js              历史记录
+logger.js               日志
 ```
-
-#### 2. 批量扫描与下载 PDF (`download`)
-向官方查询你名下的所有带幻灯片的项目，并在终端中列出让你选择，一键下载到本机的 `slides_downloads` 下。
-```bash
-# 执行后输入扫描限制 (例如搜寻最新的 10 个项目)，再选择需要下载的编号 (例如 1-5,7)
-pnpm download
-```
-
-#### 3. 综合管理助手 (`manage`)
-提供流式扫描、清理空项目、批量生成 Slide 及过滤查重。
-```bash
-# 执行后可设置扫描限制，随后一键清理空项目或选择范围批量补刷 Slide
-pnpm manage
-```
-
-#### 4. 自动排版拼图 (`img`)
-将下好的 PDF 页面根据你的排版要求（比如一图三页无缝拼接）裁成一张张适用于小红书的长图。
-```bash
-# 唤起交互式问答拼图
-pnpm img
-
-# [进阶] 使用命令行参数直接跳过问答，直接把编号为 1,2 的文件垂直拼接，每张大图放 4 页幻灯片，间距 10 像素
-pnpm img --file 1,2 --layout 1 --grid 4 --gap 10
-```
-
-#### 5. 小红书全自动发布 (`xhs`)
-打开一个自动化内嵌隐身浏览器，自动填写标题、上传图片并完成验证码和点击发布。
-```bash
-# 默认唤起交互式连发模式：自动按最新时间列出 slides_downloads 里的图集供你选择（支持 1-5,8 多选进入全自动队列发帖）
-pnpm xhs
-
-# [进阶] 单个任务跑通模式：通过命令行参数直接跳过问答，指定需要发布的图片所在文件夹与标题、正文
-pnpm xhs --dir "slides_downloads/视频变漫画：文明_images" --title "视频变漫画：文明" --desc "视频变漫画：文明"
-
-# [进阶] 文件夹批量分P发布模式：将一个包含大量图片的文件夹按切分为多篇帖子（默认每篇 9 张图），序号自动递增连续发布
-pnpm xhs --bulk-dir "slides_downloads/我的超长壁纸集_images" --chunk 9 --title "精美壁纸分享" --desc "每天分享好看的壁纸，喜欢就点赞收藏吧！"
-
-# [进阶] 单篇定时发布：指定未来的某个时间点发布当前图文稿件
-pnpm xhs --dir "slides_downloads/视频变漫画：文明_images" --title "视频变漫画：文明" --schedule-start "2026-03-18 20:00"
-
-# [进阶] 定时分开发布：配合批量发布功能，设定从某个时间点开始，每隔几个小时自动发布一篇 (例如从晚上 8 点开始，每隔 4 小时发一篇)
-pnpm xhs --bulk-dir "slides_downloads/我的超长壁纸集_images" --chunk 9 --title "精美壁纸分享" --schedule-start "2026-03-18 20:00" --schedule-interval 4
-
-# [进阶] 定时发布跳过深夜：配合定时发布，如果推算出的时间落在晚上 23:00 到 早上 07:00 之间，自动顺延到早上 07:00
-pnpm xhs --bulk-dir "output/" --chunk 5 --title "童年动画片" --schedule-start "2026-03-18 20:00" --schedule-interval 4 --skip-night
-```
-
-## ⚠️ 常见问答
-- **遇到报错并跳出？**
-  本工具由于采用了完整的错误阻断。如果遇到未登录、超时或是 CLI 的问题，为了保证安全它会直接退出进程。您可以根据控制台输出的原始 CLI `<<< 错误信息` 解决后再继续。
-
-

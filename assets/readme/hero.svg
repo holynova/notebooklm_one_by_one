@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="360" viewBox="0 0 1200 360"
+     role="img" aria-labelledby="title desc">
+  <title id="title">NotebookLM One by One — 把一批网址变成一组可下载的幻灯片</title>
+  <desc id="desc">深色暖底标题：NotebookLM One by One；右侧是五步流水线：批量 URL → Notebook → Slide Deck → PDF / 长图 → 小红书发布。</desc>
+
+  <rect width="1200" height="360" rx="26" fill="#11100e"/>
+
+  <g id="title-block" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+    <text x="56" y="62" font-size="19" letter-spacing="3" fill="#ffbf69">NODE.JS · LOCAL AUTOMATION</text>
+    <text x="56" y="128" font-size="46" font-weight="700" fill="#fff8ec">NotebookLM One by One</text>
+    <text x="56" y="168" font-size="23" fill="#fff8ec">把一批网址，变成一组可下载的幻灯片</text>
+    <text x="56" y="204" font-size="19" fill="#c7bca9">批量创建 Notebook、导入来源、生成 Slide Deck，再下载、拼图、发布。</text>
+    <g id="chips" font-size="18" fill="#fff8ec" text-anchor="middle">
+      <g><rect x="56" y="238" width="150" height="36" rx="18" fill="#211e19" stroke="#66533c" stroke-width="1.5"/><text x="131" y="262">批量 URL 投喂</text></g>
+      <g><rect x="218" y="238" width="150" height="36" rx="18" fill="#211e19" stroke="#66533c" stroke-width="1.5"/><text x="293" y="262">一键下载 PDF</text></g>
+      <g><rect x="380" y="238" width="126" height="36" rx="18" fill="#211e19" stroke="#66533c" stroke-width="1.5"/><text x="443" y="262">小红书发布</text></g>
+      <g><rect x="518" y="238" width="126" height="36" rx="18" fill="#211e19" stroke="#66533c" stroke-width="1.5"/><text x="581" y="262">断点续传</text></g>
+    </g>
+  </g>
+
+  <g id="pipeline" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif" font-size="18" text-anchor="middle">
+    <g><rect x="800" y="36" width="320" height="40" rx="10" fill="#211e19" stroke="#66533c" stroke-width="1.5"/><text x="960" y="62" fill="#fff8ec">1 · 批量 URL 投喂</text></g>
+    <polygon points="960,84 952,96 968,96" fill="#ffbf69"/>
+    <g><rect x="800" y="100" width="320" height="40" rx="10" fill="#211e19" stroke="#66533c" stroke-width="1.5"/><text x="960" y="126" fill="#fff8ec">2 · 创建 Notebook · 导入来源</text></g>
+    <polygon points="960,148 952,160 968,160" fill="#ffbf69"/>
+    <g><rect x="800" y="164" width="320" height="40" rx="10" fill="#211e19" stroke="#66533c" stroke-width="1.5"/><text x="960" y="190" fill="#fff8ec">3 · 生成 Slide Deck</text></g>
+    <polygon points="960,212 952,224 968,224" fill="#ffbf69"/>
+    <g><rect x="800" y="228" width="320" height="40" rx="10" fill="#211e19" stroke="#66533c" stroke-width="1.5"/><text x="960" y="254" fill="#fff8ec">4 · 下载 PDF · 转图拼图</text></g>
+    <polygon points="960,276 952,288 968,288" fill="#ffbf69"/>
+    <g><rect x="800" y="292" width="320" height="40" rx="10" fill="#ffbf69"/><text x="960" y="318" fill="#291707">5 · 小红书图文发布</text></g>
+  </g>
+</svg>
